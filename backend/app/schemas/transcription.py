@@ -1,0 +1,34 @@
+# Pydantic schemas for transcription 
+from pydantic import BaseModel
+from typing import Optional
+
+class TranscriptionRequest(BaseModel):
+    language_code: str = "ta-IN"  # Tamil India
+    model: str = "saarika:v1"
+    with_timestamps: bool = False
+
+class TranscriptionResponse(BaseModel):
+    transcription: str
+    language_detected: str
+    confidence: Optional[float] = None
+    processing_time: Optional[float] = None
+
+class TranslationRequest(BaseModel):
+    text: str
+    source_language: str = "ta"
+    target_language: str = "en"
+    model: str = "mayura"
+
+class TranslationResponse(BaseModel):
+    original_text: str
+    translated_text: str
+    source_language: str
+    target_language: str
+    confidence: Optional[float] = None
+
+class ProcessFileResponse(BaseModel):
+    filename: str
+    transcription: str
+    translation: str
+    processing_time: float
+    file_type: str 

@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 from app.core.config import settings
-from app.api.routes import transcription
+from app.api.routes import transcription, translation
 
 # Create FastAPI app
 app = FastAPI(
@@ -27,6 +27,12 @@ app.include_router(
     transcription.router, 
     prefix="/api/v1/transcription", 
     tags=["transcription"]
+)
+
+app.include_router(
+    translation.router,
+    prefix="/api/v1/translation",
+    tags=["translation"]
 )
 
 @app.get("/")

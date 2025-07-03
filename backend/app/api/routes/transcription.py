@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 import os
 import time
 import aiofiles
@@ -42,7 +42,10 @@ async def save_uploaded_file(file: UploadFile) -> str:
     return str(file_path)
 
 @router.post("/transcribe", response_model=ProcessFileResponse)
-async def transcribe_and_translate_file(file: UploadFile = File(...)):
+async def transcribe_and_translate_file(
+    file: UploadFile = File(...),
+    diarization: bool = Query(False, description="Enable speaker diarization if supported")
+):
     """
     Main endpoint to transcribe and translate uploaded audio/video files
     """
@@ -62,7 +65,8 @@ async def transcribe_and_translate_file(file: UploadFile = File(...)):
         # Transcribe audio using Sarvam AI
         transcription_result = await sarvam_service.transcribe_audio(
             audio_path, 
-            language_code="ta-IN"
+            language_code="ta-IN",
+            with_diarization=diarization
         )
         
         # Translate transcribed text
@@ -79,7 +83,8 @@ async def transcribe_and_translate_file(file: UploadFile = File(...)):
             transcription=transcription_result.transcription,
             translation=translation_result.translated_text,
             processing_time=processing_time,
-            file_type=file_type
+            file_type=file_type,
+            diarized_transcript=transcription_result.diarized_transcript
         )
         
     except Exception as e:
@@ -94,7 +99,7 @@ async def transcribe_and_translate_file(file: UploadFile = File(...)):
                 pass
 
 @router.post("/batch_transcribe")
-async def batch_transcribe_file(file: UploadFile = File(...), language_code: str = "ta-IN"):
+async def batch_transcribe_file(file: UploadFile = File(...), language_code: str = "ta-IN", diarization: bool = Query(False, description="Enable speaker diarization if supported")):
     """
     Endpoint to handle long audio files using Sarvam batch API.
     Returns the transcript directly.
@@ -107,11 +112,12 @@ async def batch_transcribe_file(file: UploadFile = File(...), language_code: str
         shutil.copyfileobj(file.file, tmp)
         tmp_path = tmp.name
     # Start batch process
-    transcript = await sarvam_batch.batch_transcribe(tmp_path, language_code=language_code)
+    transcript, diarized_transcript = await sarvam_batch.batch_transcribe(tmp_path, language_code=language_code, diarization=diarization)
     # Clean up temp file
     os.unlink(tmp_path)
     return {
-        "transcript": transcript
+        "transcript": transcript,
+        "diarized_transcript": diarized_transcript
     }
 
 @router.get("/health")

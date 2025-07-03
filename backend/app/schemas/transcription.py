@@ -12,6 +12,7 @@ class TranscriptionResponse(BaseModel):
     language_detected: str
     confidence: Optional[float] = None
     processing_time: Optional[float] = None
+    diarized_transcript: Optional[dict] = None  # Add diarization support
 
 class TranslationRequest(BaseModel):
     text: str
@@ -31,4 +32,5 @@ class ProcessFileResponse(BaseModel):
     transcription: str
     translation: str
     processing_time: float
-    file_type: str 
+    file_type: str
+    diarized_transcript: Optional[dict] = None  # Add diarization support 

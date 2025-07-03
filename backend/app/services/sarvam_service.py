@@ -4,7 +4,7 @@ import httpx
 import aiofiles
 import os
 import mimetypes
-from typing import Optional
+from typing import Optional, Dict, Any
 from app.core.config import settings
 from app.schemas.transcription import TranscriptionResponse, TranslationResponse
 
@@ -20,10 +20,11 @@ class SarvamService:
         self, 
         file_path: str, 
         language_code: str = "ta-IN",
-        model: str = "saarika:v1"
+        model: str = "saarika:v1",
+        with_diarization: bool = False
     ) -> TranscriptionResponse:
         """
-        Transcribe audio using Sarvam AI's Saarika speech-to-text API
+        Transcribe audio using Sarvam AI's Saarika speech-to-text API, with optional diarization
         """
         url = f"{self.base_url}/speech-to-text"
         
@@ -39,8 +40,10 @@ class SarvamService:
             data = {
                 'model': model,
                 'language_code': language_code,
-                'with_timestamps': 'false'
+                'with_timestamps': 'false',
             }
+            if with_diarization:
+                data['with_diarization'] = 'true'
             
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -53,12 +56,13 @@ class SarvamService:
                 print("Sarvam API response:", response.status_code, response.text)  # Debug print
                 response.raise_for_status()
                 result = response.json()
-                
+                diarized_transcript = result.get('diarized_transcript')
                 return TranscriptionResponse(
                     transcription=result.get('transcript', ''),
                     language_detected=language_code,
                     confidence=result.get('confidence'),
-                    processing_time=result.get('processing_time')
+                    processing_time=result.get('processing_time'),
+                    diarized_transcript=diarized_transcript
                 )
     
     async def translate_text(

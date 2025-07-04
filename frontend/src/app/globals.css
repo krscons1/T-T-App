@@ -1,3 +1,5 @@
-body {
-  font-family: sans-serif;
-} 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Add any global resets or overrides below if needed */ 

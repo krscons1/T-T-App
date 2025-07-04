@@ -9,11 +9,13 @@ from app.core.config import settings
 from app.services.sarvam_service import sarvam_service
 from app.services.audio_service import audio_service
 from app.schemas.transcription import ProcessFileResponse
+from app.utils.audio_utils import preprocess_audio
+import soundfile as sf
 
 router = APIRouter()
 
 async def save_uploaded_file(file: UploadFile) -> str:
-    """Save uploaded file to temporary directory"""
+    """Save uploaded file to downloads directory"""
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
     
@@ -30,11 +32,10 @@ async def save_uploaded_file(file: UploadFile) -> str:
             detail=f"File type {file_ext} not supported"
         )
     
-    # Save file
-    upload_dir = Path(settings.UPLOAD_DIR)
-    upload_dir.mkdir(exist_ok=True)
-    
-    file_path = upload_dir / f"{int(time.time())}_{file.filename}"
+    # Save file to backend/downloads
+    download_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../downloads'))
+    os.makedirs(download_dir, exist_ok=True)
+    file_path = os.path.join(download_dir, f"{int(time.time())}_{file.filename}")
     
     async with aiofiles.open(file_path, 'wb') as f:
         await f.write(contents)
@@ -111,10 +112,35 @@ async def batch_transcribe_file(file: UploadFile = File(...), language_code: str
     with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp:
         shutil.copyfileobj(file.file, tmp)
         tmp_path = tmp.name
+    # Preprocess audio
+    processed_path = preprocess_audio(tmp_path)
+    if not processed_path:
+        os.unlink(tmp_path)
+        raise HTTPException(status_code=500, detail="Audio preprocessing failed.")
+    # Print duration of preprocessed audio only if it's a .wav file
+    if processed_path.lower().endswith('.wav'):
+        y, sr = sf.read(processed_path)
+        print(f"[batch_transcribe_file] Preprocessed audio duration: {len(y)/sr:.2f}s")
+    else:
+        print(f"[batch_transcribe_file] Skipping duration logging for non-wav file: {processed_path}")
     # Start batch process
-    transcript, diarized_transcript = await sarvam_batch.batch_transcribe(tmp_path, language_code=language_code, diarization=diarization)
-    # Clean up temp file
-    os.unlink(tmp_path)
+    # Log the raw response from Sarvam
+    print(f"[batch_transcribe_file] Calling Sarvam batch_transcribe with: {processed_path}, language_code={language_code}, diarization={diarization}")
+    response = await sarvam_batch.batch_transcribe(processed_path, language_code=language_code, diarization=diarization)
+    print(f"[batch_transcribe_file] Raw Sarvam response: {response}")
+    # Unpack response as before
+    if isinstance(response, tuple) and len(response) == 2:
+        transcript, diarized_transcript = response
+    else:
+        transcript = response
+        diarized_transcript = None
+    # Clean up temp files
+    for path in [tmp_path, processed_path]:
+        if isinstance(path, str) and path and os.path.exists(path):
+            try:
+                os.unlink(path)
+            except Exception as e:
+                print(f"Failed to delete {path}: {e}")
     return {
         "transcript": transcript,
         "diarized_transcript": diarized_transcript

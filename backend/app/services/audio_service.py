@@ -3,6 +3,7 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Tuple
+from app.utils.audio_utils import preprocess_audio
 
 class AudioService:
     @staticmethod
@@ -53,10 +54,14 @@ class AudioService:
         filename = os.path.basename(file_path)
         
         if AudioService.is_audio_file(filename):
-            return file_path, "audio"
+            # Preprocess audio file
+            processed_path = preprocess_audio(file_path)
+            return processed_path, "audio"
         elif AudioService.is_video_file(filename):
             audio_path = await AudioService.extract_audio_from_video(file_path)
-            return audio_path, "video"
+            # Preprocess extracted audio
+            processed_path = preprocess_audio(audio_path)
+            return processed_path, "video"
         else:
             raise ValueError("Unsupported file format")
 

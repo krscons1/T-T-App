@@ -7,17 +7,17 @@ from scipy.signal import butter, lfilter
 from pydub import AudioSegment
 from pydub.silence import detect_nonsilent
 import resampy
-import webrtcvad
 import noisereduce as nr
 import torchaudio
 from app.core.config import settings
+import subprocess
+from pyannote.audio import Pipeline
 
 SAMPLE_RATE = 16000
 VAD_MODE     = 2               # 0-3
 EMB_WINDOW   = 'whole'
 
 # load once per worker
-vad = webrtcvad.Vad(VAD_MODE)
 
 # Initialize speechbrain embedder with error handling - make it optional
 sb_embedder = None
@@ -151,21 +151,6 @@ def reduce_noise(wav_path:str)->str:
     sf.write(out, reduced, sr)
     return out
 
-def vad_trim(wav_path:str)->str:
-    pcm, sr = sf.read(wav_path, dtype='int16')
-    frame_ms = 30
-    frame_len = int(sr*frame_ms/1000)
-    voiced = []
-    for i in range(0,len(pcm),frame_len):
-        frame = pcm[i:i+frame_len]
-        if len(frame)<frame_len: break
-        if vad.is_speech(frame.tobytes(), sr):
-            voiced.append(frame)
-    speech = np.concatenate(voiced)
-    out = wav_path.replace("_clean.wav","_speech.wav")
-    sf.write(out, speech, sr, subtype='PCM_16')
-    return out
-
 def extract_embedding(wav_path:str)->np.ndarray:
     if sb_embedder is None:
         print("⚠️  speechbrain embedder not available. Returning dummy embedding.")
@@ -179,3 +164,50 @@ def extract_embedding(wav_path:str)->np.ndarray:
         print(f"❌ Error extracting embedding: {e}")
         # Return a dummy embedding as fallback
         return np.zeros(192) 
+
+def transcribe_with_whisper_cpp(audio_path, model_path, binary_path, language="ta"):
+    """
+    Transcribe audio using whisper.cpp (whisper-cli.exe) via subprocess.
+    Returns the transcript as a string.
+    Raises RuntimeError if the binary is missing or the subprocess fails.
+    """
+    import os
+    import subprocess
+    abs_binary_path = os.path.abspath(binary_path)
+    try:
+        result = subprocess.run(
+            [abs_binary_path, "-m", model_path, "-f", audio_path, "--language", language],
+            capture_output=True, text=True, check=True
+        )
+        return result.stdout
+    except FileNotFoundError:
+        raise RuntimeError(f"whisper.cpp binary not found at: {abs_binary_path}")
+    except subprocess.CalledProcessError as e:
+        # Raise with stderr so the error message is visible
+        raise RuntimeError(f"whisper.cpp failed: {e.stderr.strip()}")
+    except Exception as e:
+        raise RuntimeError(f"whisper.cpp failed: {e}")
+
+def vad_trim_pyannote(wav_path, token):
+    """
+    Trim audio using pyannote.audio VAD pipeline. Returns path to trimmed 16kHz audio.
+    """
+    pipeline = Pipeline.from_pretrained("pyannote/voice-activity-detection", use_auth_token=token)
+    vad_result = pipeline(wav_path)
+    speech_segments = [(segment.start, segment.end) for segment in vad_result.get_timeline()]
+    if not speech_segments:
+        print("⚠️  No speech detected by pyannote VAD. Returning original file.")
+        return wav_path
+    audio, sr = sf.read(wav_path)
+    speech_audio = np.concatenate([
+        audio[int(start * sr):int(end * sr)] for start, end in speech_segments
+    ])
+    # Resample to 16kHz if needed
+    if sr != 16000:
+        import librosa
+        speech_audio = librosa.resample(speech_audio, orig_sr=sr, target_sr=16000)
+        sr = 16000
+    out_path = wav_path.replace(".wav", "_speech.wav")
+    sf.write(out_path, speech_audio, sr, subtype='PCM_16')
+    print(f"[vad_trim_pyannote] Trimmed with pyannote VAD: {out_path}")
+    return out_path 

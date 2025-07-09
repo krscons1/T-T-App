@@ -3,7 +3,8 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Tuple
-from app.utils.audio_utils import preprocess_audio, to_mono_wav, reduce_noise, vad_trim, extract_embedding
+from app.utils.audio_utils import preprocess_audio, to_mono_wav, reduce_noise, extract_embedding, vad_trim_pyannote
+from app.core.config import settings
 
 sb_embedder = None
 try:
@@ -67,7 +68,8 @@ class AudioService:
         try:
             wav = to_mono_wav(file_path)
             clean = reduce_noise(wav)
-            speech = vad_trim(clean)
+            # VAD trim with pyannote.audio (16kHz)
+            speech = vad_trim_pyannote(clean, token=settings.HUGGINGFACE_AUTH_TOKEN)
             embedding = extract_embedding(speech)
             return speech, embedding, "audio"
         except Exception as e:

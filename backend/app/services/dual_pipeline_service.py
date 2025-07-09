@@ -2,13 +2,25 @@ import asyncio
 import json
 import os
 from typing import Dict, Tuple, Optional, List
+from fastapi import HTTPException
 from app.services.sarvam_batch_service import SarvamBatchService
 from app.services.audio_service import audio_service
 from app.services.qc_service import qc_service
 from app.services.audio_cross_validator import audio_cross_validator
 from app.utils.audio_utils import convert_to_wav
+from app.utils.audio_utils import transcribe_with_whisper_cpp
 from app.core.config import settings
 from typing import Optional
+
+def convert_mp3_to_wav(mp3_path):
+    import subprocess
+    import os
+    wav_path = os.path.splitext(mp3_path)[0] + "_converted.wav"
+    subprocess.run([
+        "ffmpeg", "-y", "-i", mp3_path,
+        "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav_path
+    ], check=True)
+    return wav_path
 
 class DualPipelineService:
     def __init__(self):
@@ -19,9 +31,8 @@ class DualPipelineService:
         Process audio through two pipelines:
         1. Direct WAV conversion → Sarvam batch
         2. Enhanced preprocessing → Sarvam batch
-        
-        Automatically creates optimal transcript by cross-validating with audio.
-        Only routes to QC for cases that need manual review.
+        If transcripts are exactly equal, return one.
+        Otherwise, use whisper.cpp (medium model, Tamil) to transcribe the audio and create an optimal transcript by comparing word by word. Never send to QC, always return the optimal transcript.
         """
         try:
             # Pipeline 1: Direct WAV conversion
@@ -31,69 +42,92 @@ class DualPipelineService:
             # Pipeline 2: Enhanced preprocessing
             print("🔄 Starting Pipeline 2: Enhanced preprocessing")
             pipeline2_result = await self._pipeline2_enhanced_preprocessing(file_path)
-            
-            # Compare results
-            comparison_result = self._compare_transcripts(
-                pipeline1_result.get('transcript', ''),
-                pipeline2_result.get('transcript', '')
-            )
-            
-            # Prepare audio file paths
-            audio_file1 = pipeline1_result.get('processed_file')
-            audio_file2 = pipeline2_result.get('processed_file')
 
-            # Create optimal transcript using audio cross-validation, with None checks
-            if not audio_file1 or not audio_file2:
-                optimal_transcript = await self._create_optimal_transcript_automatically(
-                    pipeline1_result.get('transcript', ''),
-                    pipeline2_result.get('transcript', ''),
-                    comparison_result
-                )
-            else:
-                optimal_transcript = await self._create_optimal_transcript_with_audio_validation(
-                    pipeline1_result.get('transcript', ''),
-                    pipeline2_result.get('transcript', ''),
-                    audio_file1,
-                    audio_file2,
-                    comparison_result
-                )
-            
-            # Only add to QC queue if there are significant issues that need manual review
-            qc_case_id = None
-            qc_required = self._should_require_qc(comparison_result, optimal_transcript)
-            
-            if qc_required:
-                qc_case_id = qc_service.add_to_qc_queue({
+            transcript1 = pipeline1_result.get('transcript', '').strip()
+            transcript2 = pipeline2_result.get('transcript', '').strip()
+
+            words1 = transcript1.split()
+            words2 = transcript2.split()
+
+            if words1 == words2:
+                print("✅ Transcripts are exactly equal, returning result.")
+                comparison = {
+                    'match': True,
+                    'similarity_score': 1.0,
+                    'final_transcript': transcript1,
+                    'qc_required': False,
+                    'reason': 'Transcripts are exactly equal',
+                    'pipeline1_length': len(words1),
+                    'pipeline2_length': len(words2)
+                }
+                return {
                     'pipeline1': pipeline1_result,
                     'pipeline2': pipeline2_result,
-                    'comparison': comparison_result,
-                    'optimal_transcript': optimal_transcript
-                })
-                print(f"📋 Added to QC queue for manual review: {qc_case_id}")
-            else:
-                print("✅ Automatic optimal transcript created successfully using audio cross-validation")
-            
+                    'comparison': comparison,
+                    'final_transcript': transcript1,
+                    'qc_required': False,
+                    'qc_case_id': None
+                }
+
+            # Use whisper.cpp (medium model, Tamil) to transcribe the audio
+            print("🦜 Transcribing with whisper.cpp for optimal transcript (medium model, Tamil)...")
+            wav_path = pipeline1_result.get('processed_file', file_path)
+            # Convert to WAV if input is MP3
+            file_ext = os.path.splitext(wav_path)[1].lower()
+            if file_ext == ".mp3":
+                wav_path = convert_mp3_to_wav(wav_path)
+            whisper_model_path = "T-T-App/backend/whisper.cpp/models/ggml-base.bin"
+            whisper_binary_path = r"C:\\Users\\Asus\\Desktop\\T-T\\T-T-App\\backend\\whisper.cpp\\build\\bin\\whisper-cli.exe"
+            whisper_transcript = transcribe_with_whisper_cpp(
+                audio_path=wav_path,
+                model_path=whisper_model_path,
+                binary_path=whisper_binary_path,
+                language="ta"
+            )
+            whisper_words = whisper_transcript.strip().split()
+
+            # Build optimal transcript word by word
+            optimal_words = []
+            max_len = max(len(words1), len(words2), len(whisper_words))
+            match_count = 0
+            for i in range(max_len):
+                w1 = words1[i] if i < len(words1) else ''
+                w2 = words2[i] if i < len(words2) else ''
+                w_whisper = whisper_words[i] if i < len(whisper_words) else ''
+                # If either pipeline matches whisper, use that word
+                if w1 == w_whisper:
+                    optimal_words.append(w1)
+                    match_count += 1
+                elif w2 == w_whisper:
+                    optimal_words.append(w2)
+                    match_count += 1
+                else:
+                    # If neither matches, default to pipeline 1's word
+                    optimal_words.append(w1)
+            optimal_transcript = ' '.join(optimal_words)
+            print(f"✅ Optimal transcript created using whisper.cpp: {optimal_transcript}")
+            # Create a dummy comparison result
+            similarity_score = match_count / max_len if max_len > 0 else 0.0
+            comparison = {
+                'match': similarity_score == 1.0,
+                'similarity_score': similarity_score,
+                'final_transcript': optimal_transcript,
+                'qc_required': False,
+                'reason': 'Optimal transcript generated using whisper.cpp',
+                'pipeline1_length': len(words1),
+                'pipeline2_length': len(words2)
+            }
             return {
                 'pipeline1': pipeline1_result,
                 'pipeline2': pipeline2_result,
-                'comparison': comparison_result,
+                'comparison': comparison,
                 'final_transcript': optimal_transcript,
-                'qc_required': qc_required,
-                'qc_case_id': qc_case_id,
-                'optimal_transcript': optimal_transcript
-            }
-            
-        except Exception as e:
-            print(f"❌ Error in dual pipeline processing: {e}")
-            return {
-                'error': str(e),
-                'pipeline1': None,
-                'pipeline2': None,
-                'comparison': None,
-                'final_transcript': None,
-                'qc_required': True,
+                'qc_required': False,
                 'qc_case_id': None
             }
+        except Exception as e:
+            print(f"❌ Error in dual pipeline processing: {e}")
+            raise HTTPException(status_code=500, detail=f"Dual pipeline processing failed: {str(e)}")
     
     async def _pipeline1_direct_wav(self, file_path: str) -> Dict:
         """Pipeline 1: Convert to WAV and send to Sarvam batch"""

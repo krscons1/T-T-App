@@ -1,0 +1,8 @@
+# Enhanced audio processing requirements
+noisereduce==3.0.3
+webrtcvad==2.0.10
+pyannote.audio==3.1.1
+speechbrain==0.5.16
+torchaudio==2.2.0
+resampy==0.4.2
+sarvamai==0.1.0 

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException
-from app.schemas.translation import TranslationRequest, TranslationResponse
+from app.schemas.transcription import TranslationRequest, TranslationResponse
 import time
 import os
-from sarvamai import SarvamAI
+from app.services.sarvam_service import sarvam_service
 from dotenv import load_dotenv
 import logging
 
@@ -10,8 +10,6 @@ router = APIRouter()
 
 # Load environment variables
 load_dotenv()
-SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
-client = SarvamAI(api_subscription_key=SARVAM_API_KEY)
 
 # Language code mapping for SarvamAI
 LANG_CODE_MAP = {
@@ -22,27 +20,25 @@ LANG_CODE_MAP = {
 }
 
 @router.post("/translate", response_model=TranslationResponse)
-def translate(request: TranslationRequest):
+async def translate(request: TranslationRequest):
     start_time = time.time()
     try:
-        source_lang = LANG_CODE_MAP.get(request.source_lang, request.source_lang)
-        target_lang = LANG_CODE_MAP.get(request.target_lang, request.target_lang)
-        response = client.text.translate(
-            input=request.text,
-            source_language_code=source_lang,
-            target_language_code=target_lang,
-            speaker_gender="Male",  # You can update this to use request.speaker_gender if you add it to the schema
-            model="sarvam-translate:v1"
+        source_lang = LANG_CODE_MAP.get(request.source_language, request.source_language)
+        target_lang = LANG_CODE_MAP.get(request.target_language, request.target_language)
+        
+        # Use the existing SarvamService
+        response = await sarvam_service.translate_text(
+            text=request.text,
+            source_lang=source_lang,
+            target_lang=target_lang
         )
+        
         logging.warning(f"SarvamAI response: {response}")
-        translated_text = getattr(response, 'translated_text', '')
         processing_time = time.time() - start_time
-        return TranslationResponse(
-            original_text=request.text,
-            translated_text=translated_text,
-            detected_proper_nouns=[],
-            code_switching_detected=False,
-            processing_time=processing_time
-        )
+        
+        # Update the response with processing time
+        response.processing_time = processing_time
+        return response
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}") 

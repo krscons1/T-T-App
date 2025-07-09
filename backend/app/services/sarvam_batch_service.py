@@ -87,7 +87,8 @@ class SarvamBatchService:
         print(f"✅ Downloaded result JSON to {local_path}")
         return local_path
 
-    async def batch_transcribe(self, local_file_path: str, language_code: str = "ta-IN", destination_dir: str = "downloads", diarization: bool = False) -> Optional[tuple]:
+    async def batch_transcribe(self, wav_path:str, language_code:str="ta-IN",
+                               diarization:bool=True, speaker_embedding=None):
         # Step 1: Initialize the job
         job_info = self.initialize_job()
         if not job_info:
@@ -98,14 +99,15 @@ class SarvamBatchService:
         output_storage_path = job_info["output_storage_path"]
 
         # Step 2: Upload file to Azure
-        self.upload_file_to_azure(input_storage_path, local_file_path)
+        self.upload_file_to_azure(input_storage_path, wav_path)
         print("File upload step complete. Waiting before starting job...")
         await asyncio.sleep(5)  # Wait 5 seconds to ensure file is available
 
         # Step 3: Start the job
-        job_parameters = {"language_code": language_code}
-        if diarization:
-            job_parameters["with_diarization"] = "true"
+        job_parameters = {"language_code": language_code,
+                          "with_diarization": str(diarization).lower()}
+        if speaker_embedding is not None:
+            job_parameters["speaker_embedding"] = speaker_embedding.tolist()
         job_start_response = self.start_job_with_params(job_id, job_parameters)
         if not job_start_response:
             print("Failed to start job (see above for details)")
@@ -130,7 +132,7 @@ class SarvamBatchService:
                 await asyncio.sleep(10)
 
         # Step 5: Download results from Azure
-        result_json_path = self.download_result_json(output_storage_path, destination_dir)
+        result_json_path = self.download_result_json(output_storage_path, "downloads")
         if not result_json_path:
             print("No result JSON found.")
             return None, None

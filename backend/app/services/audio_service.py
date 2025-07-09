@@ -3,7 +3,24 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Tuple
-from app.utils.audio_utils import preprocess_audio
+from app.utils.audio_utils import preprocess_audio, to_mono_wav, reduce_noise, vad_trim, extract_embedding
+
+sb_embedder = None
+try:
+    from speechbrain.pretrained import EncoderClassifier
+    sb_embedder = EncoderClassifier.from_hparams(
+        source='speechbrain/spkrec-ecapa-voxceleb',
+        run_opts={'device': 'cpu'})
+    print("✅ Successfully loaded speechbrain embedder")
+except ImportError:
+    print("⚠️  speechbrain not installed. Speaker embedding will be disabled.")
+    print("💡 To install speechbrain, you may need to:")
+    print("   1. Install Visual Studio Build Tools")
+    print("   2. Install CMake")
+    print("   3. Run: pip install speechbrain")
+except Exception as e:
+    print(f"❌ Error loading speechbrain embedder: {e}")
+    print("Speaker embedding extraction will be disabled.")
 
 class AudioService:
     @staticmethod
@@ -46,23 +63,18 @@ class AudioService:
         return Path(filename).suffix.lower() in audio_extensions
     
     @staticmethod
-    async def validate_and_prepare_audio(file_path: str) -> Tuple[str, str]:
-        """
-        Validate file and prepare audio for transcription
-        Returns: (audio_path, file_type)
-        """
-        filename = os.path.basename(file_path)
-        
-        if AudioService.is_audio_file(filename):
-            # Preprocess audio file
+    async def validate_and_prepare_audio(file_path: str):
+        try:
+            wav = to_mono_wav(file_path)
+            clean = reduce_noise(wav)
+            speech = vad_trim(clean)
+            embedding = extract_embedding(speech)
+            return speech, embedding, "audio"
+        except Exception as e:
+            print(f"Warning: Enhanced audio processing failed: {e}")
+            print("Falling back to basic audio processing...")
+            # Fallback to basic processing
             processed_path = preprocess_audio(file_path)
-            return processed_path, "audio"
-        elif AudioService.is_video_file(filename):
-            audio_path = await AudioService.extract_audio_from_video(file_path)
-            # Preprocess extracted audio
-            processed_path = preprocess_audio(audio_path)
-            return processed_path, "video"
-        else:
-            raise ValueError("Unsupported file format")
+            return processed_path, None, "audio"
 
 audio_service = AudioService() 

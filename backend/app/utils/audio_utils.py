@@ -167,7 +167,7 @@ def extract_embedding(wav_path:str)->np.ndarray:
 
 def transcribe_with_whisper_cpp(audio_path, model_path, binary_path, language="ta"):
     """
-    Transcribe audio using whisper.cpp (whisper-cli.exe) via subprocess.
+    Transcribe audio using whisper.cpp (whisper-server.exe) via subprocess.
     Returns the transcript as a string.
     Raises RuntimeError if the binary is missing or the subprocess fails.
     """

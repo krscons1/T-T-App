@@ -77,13 +77,14 @@ class DualPipelineService:
             if file_ext == ".mp3":
                 wav_path = convert_mp3_to_wav(wav_path)
             whisper_model_path = "T-T-App/backend/whisper.cpp/models/ggml-base.bin"
-            whisper_binary_path = r"C:\\Users\\Asus\\Desktop\\T-T\\T-T-App\\backend\\whisper.cpp\\build\\bin\\whisper-cli.exe"
+            whisper_binary_path = r"C:\\Users\\Lenovo\\Desktop\\T-T\\T-T-App\\backend\\whisper.cpp\\build\\bin\\whisper-server.exe"
             whisper_transcript = transcribe_with_whisper_cpp(
                 audio_path=wav_path,
                 model_path=whisper_model_path,
                 binary_path=whisper_binary_path,
                 language="ta"
             )
+            print(f"Whisper.cpp transcript:\n{whisper_transcript}")
             whisper_words = whisper_transcript.strip().split()
 
             # Build optimal transcript word by word

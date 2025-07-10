@@ -8,7 +8,7 @@ aiofiles==23.2.1
 ffmpeg-python==0.2.0
 openai==1.3.0
 transformers==4.30.2
-torch>=2.6.0
+torch==2.2.0
 requests==2.31.0
 asyncio
 pydantic-settings==2.2.1
@@ -25,5 +25,5 @@ pyannote.audio==3.1.1
 speechbrain==0.5.16
 torchaudio==2.2.0
 resampy==0.4.2
-sarvamai==0.1.0 
+sarvamai
 huggingface_hub>=0.20.3 

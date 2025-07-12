@@ -6,6 +6,9 @@ class Settings(BaseSettings):
     SARVAM_API_KEY: str = os.getenv("SARVAM_API_KEY", "")
     SARVAM_BASE_URL: str = "https://api.sarvam.ai"
     
+    # ElevenLabs Configuration
+    ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
+    
     # Alternative Translation APIs
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     GOOGLE_TRANSLATE_KEY: str = os.getenv("GOOGLE_TRANSLATE_KEY", "")

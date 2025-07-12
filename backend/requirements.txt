@@ -22,4 +22,7 @@ pydub==0.25.1
 speechbrain==0.5.16
 pyannote.audio==3.1.1
 resampy==0.4.2
-noisereduce==3.0.4 
+noisereduce==3.0.3
+elevenlabs>=1.0.0
+indic-transliteration>=1.8.0
+

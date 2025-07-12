@@ -85,6 +85,21 @@ class DualPipelineService:
                 language="ta"
             )
             print(f"Whisper.cpp transcript:\n{whisper_transcript}")
+
+            # Save whisper transcript to file
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            whisper_log_file = f"whisper_transcripts/whisper_transcript_{timestamp}.txt"
+            os.makedirs("whisper_transcripts", exist_ok=True)
+            with open(whisper_log_file, "w", encoding="utf-8") as f:
+                f.write(f"Timestamp: {datetime.datetime.now()}\n")
+                f.write(f"Audio file: {wav_path}\n")
+                f.write(f"Model: {whisper_model_path}\n")
+                f.write(f"Language: ta\n")
+                f.write("-" * 50 + "\n")
+                f.write(whisper_transcript)
+            print(f"✅ Whisper transcript saved to: {whisper_log_file}")
+
             whisper_words = whisper_transcript.strip().split()
 
             # Build optimal transcript word by word

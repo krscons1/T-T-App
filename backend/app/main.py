@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 from app.core.config import settings
-from app.api.routes import transcription, translation
+from app.api import api_router
 
 # Create FastAPI app
 app = FastAPI(
@@ -22,25 +22,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(
-    transcription.router, 
-    prefix="/api/v1/transcription", 
-    tags=["transcription"]
-)
-
-app.include_router(
-    translation.router,
-    prefix="/api/v1/translation",
-    tags=["translation"]
-)
+# Include main API router
+app.include_router(api_router)
 
 @app.get("/")
 async def root():
     return {
         "message": "Tamil Transcriptor API", 
         "version": "1.0.0",
-        "docs": "/docs"
+        "docs": "/docs",
+        "endpoints": {
+            "transcription": "/api/v1/transcription",
+            "translation": "/api/v1/translation", 
+            "enhanced_transcription": "/api/v1/enhanced-transcription"
+        }
     }
 
 if __name__ == "__main__":

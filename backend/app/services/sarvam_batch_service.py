@@ -15,10 +15,19 @@ class SarvamBatchService:
 
     def initialize_job(self) -> Optional[dict]:
         url = "https://api.sarvam.ai/speech-to-text/job/init"
-        response = requests.post(url, headers=self.headers)
-        if response.status_code == 202:
-            return response.json()
-        return None
+        try:
+            response = requests.post(url, headers=self.headers)
+            print(f"🔍 Job initialization response: {response.status_code}")
+            if response.status_code == 202:
+                result = response.json()
+                print(f"✅ Job initialized with ID: {result.get('job_id', 'unknown')}")
+                return result
+            else:
+                print(f"❌ Job initialization failed: {response.status_code} - {response.text}")
+                return None
+        except Exception as e:
+            print(f"❌ Job initialization error: {e}")
+            return None
 
     def start_job(self, job_id: str, language_code: str) -> Optional[dict]:
         url = "https://api.sarvam.ai/speech-to-text/job"
@@ -148,8 +157,16 @@ class SarvamBatchService:
         url = "https://api.sarvam.ai/speech-to-text/job"
         headers = {**self.headers, "Content-Type": "application/json"}
         data = {"job_id": job_id, "job_parameters": job_parameters}
-        response = requests.post(url, headers=headers, data=json.dumps(data))
-        if response.status_code == 200:
-            return response.json()
-        print(f"Failed to start job: {response.status_code} {response.text}")  # Debug print
-        return None 
+        try:
+            response = requests.post(url, headers=headers, data=json.dumps(data))
+            print(f"🔍 Start job response: {response.status_code}")
+            if response.status_code == 200:
+                result = response.json()
+                print(f"✅ Job started successfully")
+                return result
+            else:
+                print(f"❌ Failed to start job: {response.status_code} - {response.text}")
+                return None
+        except Exception as e:
+            print(f"❌ Start job error: {e}")
+            return None 

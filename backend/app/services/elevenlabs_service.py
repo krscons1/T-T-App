@@ -47,14 +47,33 @@ class ElevenLabsService:
                 'file': (original_filename, audio_data, mime_type)
             }
             
-            data = {
-                'model_id': 'scribe_v1',
-                'language_code': 'en',
-                'tag_audio_events': 'true',
-                'diarize': 'true',
-                'num_speakers': '2',  # Adjust based on your audio
-                'timestamps_granularity': 'word'
-            }
+            # Try different configurations for better Tamil support
+            configs_to_try = [
+                {
+                    'model_id': 'scribe_v1',
+                    'language_code': 'ta',  # Tamil
+                    'tag_audio_events': 'true',
+                    'diarize': 'true',
+                    'num_speakers': '2',
+                    'timestamps_granularity': 'word'
+                },
+                {
+                    'model_id': 'scribe_v1',
+                    'language_code': 'auto',  # Auto-detect
+                    'tag_audio_events': 'true',
+                    'diarize': 'true',
+                    'num_speakers': '2',
+                    'timestamps_granularity': 'word'
+                },
+                {
+                    'model_id': 'scribe_v1',
+                    'language_code': 'en',  # English (fallback)
+                    'tag_audio_events': 'true',
+                    'diarize': 'true',
+                    'num_speakers': '2',
+                    'timestamps_granularity': 'word'
+                }
+            ]
             
             headers = {
                 'xi-api-key': self.api_key
@@ -63,27 +82,42 @@ class ElevenLabsService:
             print(f"🎤 Sending {len(audio_data)} bytes to ElevenLabs API...")
             
             async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.base_url}/speech-to-text",
-                    headers=headers,
-                    files=files,
-                    data=data,
-                    timeout=300.0  # Increased timeout for larger files
-                )
+                for i, config in enumerate(configs_to_try):
+                    print(f"🎤 Trying configuration {i+1}: {config}")
+                    
+                    response = await client.post(
+                        f"{self.base_url}/speech-to-text",
+                        headers=headers,
+                        files=files,
+                        data=config,
+                        timeout=300.0
+                    )
+                    
+                    print(f"🎤 ElevenLabs API response: {response.status_code}")
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        print(f"✅ ElevenLabs transcription successful with config {i+1}")
+                        print(f"🔍 Raw ElevenLabs response: {result}")
+                        
+                        parsed_result = self._parse_transcription_result(result)
+                        
+                        # Check if the result contains actual speech content
+                        if self._has_meaningful_content(parsed_result):
+                            print(f"✅ Found meaningful content with config {i+1}")
+                            return parsed_result
+                        else:
+                            print(f"⚠️ Config {i+1} returned no meaningful content, trying next...")
+                    else:
+                        print(f"❌ ElevenLabs API error with config {i+1}: {response.status_code} - {response.text}")
                 
-                print(f"🎤 ElevenLabs API response: {response.status_code}")
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    print(f"✅ ElevenLabs transcription successful")
-                    return self._parse_transcription_result(result)
-                else:
-                    print(f"❌ ElevenLabs API error: {response.status_code} - {response.text}")
-                    return self._get_mock_transcript()
+                # If all configs failed, return empty result instead of mock
+                print("❌ All ElevenLabs configurations failed")
+                return []
                     
         except Exception as e:
             print(f"❌ ElevenLabs failed: {e}")
-            return self._get_mock_transcript()
+            return []
 
     def _get_mime_type(self, file_extension: str) -> str:
         """Get MIME type based on file extension"""
@@ -105,6 +139,8 @@ class ElevenLabsService:
     def _parse_transcription_result(self, transcription) -> List[Dict]:
         segments = []
         
+        print(f"🔍 Parsing ElevenLabs result: {transcription}")
+        
         # Handle the REST API response format
         if 'words' in transcription:
             # Group words by speaker
@@ -117,6 +153,8 @@ class ElevenLabsService:
                 start_time = word.get('start', 0.0)
                 end_time = word.get('end', 0.0)
                 
+                print(f"🔍 Word: '{text}' by speaker {speaker} at {start_time}-{end_time}")
+                
                 # Start new segment if speaker changes
                 if speaker != current_speaker:
                     if current_segment:
@@ -124,7 +162,7 @@ class ElevenLabsService:
                     
                     current_speaker = speaker
                     current_segment = {
-                        'speaker': speaker,
+                        'speaker': f"speaker_{speaker}",
                         'text': text,
                         'start_time': start_time,
                         'end_time': end_time
@@ -139,6 +177,29 @@ class ElevenLabsService:
             if current_segment:
                 segments.append(current_segment)
         
+        # Handle alternative response format with segments
+        elif 'segments' in transcription:
+            for segment in transcription['segments']:
+                segments.append({
+                    'speaker': f"speaker_{segment.get('speaker_id', '0')}",
+                    'text': segment.get('text', ''),
+                    'start_time': segment.get('start', 0.0),
+                    'end_time': segment.get('end', 0.0)
+                })
+        
+        # Handle simple text response
+        elif 'text' in transcription:
+            segments.append({
+                'speaker': 'speaker_0',
+                'text': transcription['text'],
+                'start_time': 0.0,
+                'end_time': 0.0
+            })
+        
+        print(f"🔍 Parsed {len(segments)} segments")
+        for i, segment in enumerate(segments):
+            print(f"🔍 Segment {i}: {segment}")
+        
         return segments
 
     def _get_mock_transcript(self) -> List[Dict]:
@@ -146,6 +207,26 @@ class ElevenLabsService:
             {"speaker": "Speaker 1", "text": "Mock line 1", "start_time": 0.0, "end_time": 2.0},
             {"speaker": "Speaker 2", "text": "Mock line 2", "start_time": 2.0, "end_time": 4.0}
         ]
+
+    def _has_meaningful_content(self, segments: List[Dict]) -> bool:
+        """Check if the transcription contains meaningful content (not just language detection)"""
+        meaningful_keywords = [
+            'speaker', 'in tamil', '(in tamil)', 'language', 'tamil'
+        ]
+        
+        for segment in segments:
+            text = segment.get('text', '').lower()
+            
+            # If text contains only language detection keywords, it's not meaningful
+            if any(keyword in text for keyword in meaningful_keywords):
+                if len(text.split()) <= 3:  # Very short text with language keywords
+                    continue
+            
+            # If we find any text that's not just language detection, it's meaningful
+            if text and len(text.split()) > 3:
+                return True
+        
+        return False
 
 # Create instance
 elevenlabs_service = ElevenLabsService()

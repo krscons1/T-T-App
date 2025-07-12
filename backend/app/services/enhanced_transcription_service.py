@@ -64,32 +64,7 @@ class EnhancedTranscriptionService:
             print(f"❌ Transliteration failed for '{text}': {e}")
             return text
     
-    def _find_missing_words(self, elevenlabs_text: str, sarvam_text: str) -> List[str]:
-        """Find words that are in Sarvam but missing in ElevenLabs transcript"""
-        try:
-            # Convert ElevenLabs text to Tamil
-            elevenlabs_tamil = self._convert_thanglish_to_tamil(elevenlabs_text)
-            
-            # Convert Sarvam text to Tamil (in case it's also in transliteration)
-            sarvam_tamil = self._convert_thanglish_to_tamil(sarvam_text)
-            
-            # Split into words
-            elevenlabs_words = set(re.findall(r'\b[\w\u0B80-\u0BFF]+\b', elevenlabs_tamil.lower()))
-            sarvam_words = set(re.findall(r'\b[\w\u0B80-\u0BFF]+\b', sarvam_tamil.lower()))
-            
-            # Find missing words (in Sarvam but not in ElevenLabs)
-            missing_words = sarvam_words - elevenlabs_words
-            
-            print(f"🔍 ElevenLabs words: {len(elevenlabs_words)}")
-            print(f"🔍 Sarvam words: {len(sarvam_words)}")
-            print(f"🔍 Missing words: {len(missing_words)}")
-            print(f"🔍 Missing words list: {list(missing_words)[:10]}")  # Show first 10
-            
-            return list(missing_words)
-            
-        except Exception as e:
-            print(f"❌ Error finding missing words: {e}")
-            return []
+
     
     def _insert_missing_words(self, text: str, missing_words: List[str]) -> str:
         """Insert missing words into the text at appropriate positions"""
@@ -109,110 +84,7 @@ class EnhancedTranscriptionService:
             print(f"❌ Error inserting missing words: {e}")
             return text
     
-    def _insert_missing_tamil_words(self, elevenlabs_text: str, sarvam_text: str) -> str:
-        """Insert missing Tamil words word-by-word into ElevenLabs transcript"""
-        try:
-            # Extract Tamil words from Sarvam text
-            sarvam_tamil_words = self._extract_tamil_words_from_sarvam(sarvam_text)
-            
-            # Extract Tamil words from ElevenLabs text
-            elevenlabs_tamil_words = self._extract_tamil_words_from_elevenlabs(elevenlabs_text)
-            
-            # Find missing Tamil words
-            missing_tamil_words = sarvam_tamil_words - elevenlabs_tamil_words
-            
-            print(f"🔍 ElevenLabs Tamil words: {elevenlabs_tamil_words}")
-            print(f"🔍 Sarvam Tamil words: {sarvam_tamil_words}")
-            print(f"🔍 Missing Tamil words: {missing_tamil_words}")
-            
-            if not missing_tamil_words:
-                return elevenlabs_text
-            
-            # Insert missing words intelligently
-            enhanced_text = self._insert_words_intelligently(elevenlabs_text, missing_tamil_words)
-            
-            print(f"🔄 Enhanced text: '{elevenlabs_text}' -> '{enhanced_text}'")
-            return enhanced_text
-            
-        except Exception as e:
-            print(f"❌ Error inserting missing Tamil words: {e}")
-            return elevenlabs_text
-    
-    def _insert_words_intelligently(self, text: str, missing_words: set) -> str:
-        """Insert missing words intelligently into the text"""
-        try:
-            # Convert text to words
-            words = text.split()
-            
-            # Look for common Tamil word patterns to insert missing words
-            # For example, if "kutti" is missing, look for "story" and insert before it
-            enhanced_words = []
-            
-            for i, word in enumerate(words):
-                enhanced_words.append(word)
-                
-                # Check if we should insert missing words after this word
-                if word.lower() in ["story", "kathai", "paattu", "song"]:
-                    # Insert missing words that might be related to the story
-                    for missing_word in missing_words:
-                        if missing_word in ["குழந்தை", "குட்டி", "கதை", "பாட்டு"]:  # child, story, song
-                            if missing_word not in enhanced_words:
-                                enhanced_words.append(missing_word)
-                                print(f"🔄 Inserted '{missing_word}' after '{word}'")
-                
-                elif word.lower() in ["attention", "listen", "pay"]:
-                    # Insert missing words that might be related to attention
-                    for missing_word in missing_words:
-                        if missing_word in ["கவனம்", "கேள்வி", "செவி"]:  # attention, listen
-                            if missing_word not in enhanced_words:
-                                enhanced_words.append(missing_word)
-                                print(f"🔄 Inserted '{missing_word}' after '{word}'")
-            
-            # If we still have missing words, append them at the end
-            remaining_missing = missing_words - set(enhanced_words)
-            if remaining_missing:
-                enhanced_words.extend(remaining_missing)
-                print(f"🔄 Appended remaining words: {remaining_missing}")
-            
-            return " ".join(enhanced_words)
-            
-        except Exception as e:
-            print(f"❌ Error in intelligent word insertion: {e}")
-            # Fallback: append all missing words at the end
-            missing_text = " ".join(missing_words)
-            return f"{text} {missing_text}"
-    
-    def _extract_tamil_words_from_sarvam(self, sarvam_text: str) -> set:
-        """Extract Tamil words from Sarvam transcript"""
-        try:
-            # Convert Thanglish to Tamil using Indic transliteration
-            tamil_text = self._convert_thanglish_to_tamil(sarvam_text)
-            
-            # Extract Tamil Unicode words
-            tamil_words = set(re.findall(r'\b[\u0B80-\u0BFF]+\b', tamil_text))
-            
-            print(f"🔍 Extracted {len(tamil_words)} Tamil words from Sarvam")
-            return tamil_words
-            
-        except Exception as e:
-            print(f"❌ Error extracting Tamil words from Sarvam: {e}")
-            return set()
-    
-    def _extract_tamil_words_from_elevenlabs(self, elevenlabs_text: str) -> set:
-        """Extract Tamil words from ElevenLabs transcript"""
-        try:
-            # Convert Thanglish to Tamil using Indic transliteration
-            tamil_text = self._convert_thanglish_to_tamil(elevenlabs_text)
-            
-            # Extract Tamil Unicode words
-            tamil_words = set(re.findall(r'\b[\u0B80-\u0BFF]+\b', tamil_text))
-            
-            print(f"🔍 Extracted {len(tamil_words)} Tamil words from ElevenLabs")
-            return tamil_words
-            
-        except Exception as e:
-            print(f"❌ Error extracting Tamil words from ElevenLabs: {e}")
-            return set()
+
     
     async def process_enhanced_transcription(self, audio_file_path: str) -> Dict:
         """
@@ -237,18 +109,19 @@ class EnhancedTranscriptionService:
             
             # Create transliterated ElevenLabs transcript
             transliterated_elevenlabs = []
-            for segment in elevenlabs_result:
-                original_text = segment.get("text", "").strip()
-                if original_text:
-                    # Convert to Tamil using Indic transliteration
-                    tamil_text = self._convert_thanglish_to_tamil(original_text)
-                    transliterated_elevenlabs.append({
-                        "speaker": segment.get("speaker", "Unknown"),
-                        "start": segment.get("start_time", 0.0),
-                        "end": segment.get("end_time", 0.0),
-                        "text": tamil_text,
-                        "confidence": segment.get("confidence", 0.0)
-                    })
+            if elevenlabs_result:  # Only process if we have actual results
+                for segment in elevenlabs_result:
+                    original_text = segment.get("text", "").strip()
+                    if original_text:
+                        # Convert to Tamil using Indic transliteration
+                        tamil_text = self._convert_thanglish_to_tamil(original_text)
+                        transliterated_elevenlabs.append({
+                            "speaker": segment.get("speaker", "Unknown"),
+                            "start": segment.get("start_time", 0.0),
+                            "end": segment.get("end_time", 0.0),
+                            "text": tamil_text,
+                            "confidence": segment.get("confidence", 0.0)
+                        })
             
             return {
                 "success": True,
@@ -291,7 +164,7 @@ class EnhancedTranscriptionService:
             
             print(f"🔄 Running ffmpeg command: {' '.join(cmd)}")
             
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
             if result.returncode != 0:
                 raise Exception(f"FFmpeg conversion failed: {result.stderr}")
             
@@ -562,120 +435,159 @@ class EnhancedTranscriptionService:
         elevenlabs_result: List[Dict], 
         sarvam_result: Dict
     ) -> List[Dict]:
-        """Merge transcripts using ElevenLabs as base and Sarvam for Tamil accuracy with word-by-word insertion"""
+        """Merge transcripts - use ElevenLabs as base, Sarvam if longer"""
         try:
-            print("🔗 Merging transcripts with ElevenLabs as base and word-by-word Tamil insertion...")
+            print("🔗 Merging transcripts - ElevenLabs as base, Sarvam if longer...")
             
             sarvam_text = sarvam_result.get("transcript", "")
             
-            # Split Sarvam text into lines
-            sarvam_lines = [line.strip() for line in sarvam_text.split('\n') if line.strip()]
+            # Calculate transcript lengths
+            elevenlabs_length = sum(len(segment.get("text", "")) for segment in elevenlabs_result) if elevenlabs_result else 0
+            sarvam_length = len(sarvam_text)
             
-            print(f"📊 ElevenLabs segments: {len(elevenlabs_result)}")
-            print(f"📊 Sarvam lines: {len(sarvam_lines)}")
+            print(f"📊 ElevenLabs transcript length: {elevenlabs_length} characters")
+            print(f"📊 Sarvam transcript length: {sarvam_length} characters")
             
-            # Combine all Sarvam text for missing word detection
-            full_sarvam_text = " ".join(sarvam_lines)
+            # If ElevenLabs failed or is empty, use Sarvam
+            if not elevenlabs_result or elevenlabs_length == 0:
+                print("✅ Using Sarvam transcript (ElevenLabs failed/empty)")
+                # Create a simple segment structure for Sarvam
+                output = [{
+                    "speaker": "speaker_0",
+                    "start": 0.0,
+                    "end": 0.0,
+                    "text": sarvam_text,
+                    "confidence": 0.9
+                }]
+                return output
             
-            output = []
-            
-            # Use ElevenLabs transcript as base
-            for segment in elevenlabs_result:
-                original_text = segment.get("text", "").strip()
-                
-                if not original_text:
-                    continue
-                
-                # Find missing Tamil words using word-by-word comparison
-                enhanced_text = self._insert_missing_tamil_words(original_text, full_sarvam_text)
-                
-                output.append({
-                    "speaker": segment.get("speaker", "Unknown"),
-                    "start": segment.get("start_time", 0.0),
-                    "end": segment.get("end_time", 0.0),
-                    "text": enhanced_text,
-                    "confidence": segment.get("confidence", 0.0)
-                })
-            
-            print(f"✅ Transcript merged with word-by-word Tamil insertion: {len(output)} segments")
-            return output
+            # Use ElevenLabs as base, but use Sarvam if it's longer
+            if sarvam_length > elevenlabs_length:
+                print("✅ Using Sarvam transcript (longer)")
+                # Distribute Sarvam text intelligently across segments
+                output = self._distribute_sarvam_text(elevenlabs_result, sarvam_text)
+                return output
+            else:
+                print("✅ Using ElevenLabs transcript (base)")
+                output = []
+                for segment in elevenlabs_result:
+                    output.append({
+                        "speaker": segment.get("speaker", "Unknown"),
+                        "start": segment.get("start_time", 0.0),
+                        "end": segment.get("end_time", 0.0),
+                        "text": segment.get("text", "").strip(),
+                        "confidence": segment.get("confidence", 0.0)
+                    })
+                return output
             
         except Exception as e:
             print(f"❌ Transcript merging failed: {e}")
             return []
-
-    def _fuzzy_replace_tamil_words(self, base_text: str, sarvam_lines: List[str]) -> str:
-        """Replace Tamil words/phrases in base_text using targeted word matching from sarvam_lines."""
-        # Flatten Sarvam transcript and extract Tamil + English words
-        sarvam_text = " ".join(sarvam_lines).lower()
-        
-        # Better regex to capture complete Tamil words
-        sarvam_words = re.findall(r"\b[\w\u0B80-\u0BFF]+\b", sarvam_text)
-        
-        # Get Tamil words from Sarvam for debugging
-        tamil_words = [word for word in sarvam_words if self._contains_tamil(word)]
-        
-        print(f"🔍 Debug: Processing text with {len(sarvam_words)} Sarvam words")
-        print(f"🔍 Debug: Found {len(tamil_words)} Tamil words in Sarvam")
-        print(f"🔍 Debug: Sample Tamil words: {tamil_words[:10]}")
-        
-        # Apply targeted word replacement
-        corrected_text = self._patch_transcript_text(base_text, sarvam_words)
-        
-        return corrected_text
-
-    def _find_closest_sarvam_match(self, word: str, sarvam_words: List[str], threshold: float = 0.7) -> str:
-        """Find the closest Sarvam match with high threshold for precision"""
-        best_match = word
-        highest_score = 0
-        
-        # Skip if word is too short or already Tamil
-        if len(word) < 3 or self._contains_tamil(word):
-            return word
-        
-        # Debug: Show what we're looking for
-        print(f"🔍 Looking for word: '{word}'")
-        
-        for sarvam_word in sarvam_words:
-            # Only consider Sarvam words that contain Tamil characters
-            if not self._contains_tamil(sarvam_word):
-                continue
+    
+    def _distribute_sarvam_text(self, elevenlabs_segments: List[Dict], sarvam_text: str) -> List[Dict]:
+        """Distribute Sarvam text intelligently across ElevenLabs segments"""
+        try:
+            # If no ElevenLabs segments, return Sarvam as single segment
+            if not elevenlabs_segments:
+                return [{
+                    "speaker": "speaker_0",
+                    "start": 0.0,
+                    "end": 0.0,
+                    "text": sarvam_text,
+                    "confidence": 0.9
+                }]
+            
+            # Split Sarvam text into sentences or chunks
+            sarvam_sentences = self._split_sarvam_text(sarvam_text)
+            
+            print(f"🔍 Split Sarvam text into {len(sarvam_sentences)} sentences")
+            
+            output = []
+            sentence_index = 0
+            
+            for segment in elevenlabs_segments:
+                # Get the original ElevenLabs text for this segment
+                original_text = segment.get("text", "").strip()
                 
-            score = SequenceMatcher(None, word.lower(), sarvam_word.lower()).ratio()
-            if score > highest_score:
-                best_match = sarvam_word
-                highest_score = score
-        
-        # Only replace if we found a good Tamil match
-        if highest_score >= threshold and best_match != word:
-            print(f"🔄 Word replaced: '{word}' -> '{best_match}' (score: {highest_score:.2f})")
-            return best_match
-        else:
-            if highest_score > 0.5:  # Show close matches for debugging
-                print(f"⚠️ Close match: '{word}' -> '{best_match}' (score: {highest_score:.2f}) - below threshold")
-            return word
+                # If we have Sarvam sentences available, use them
+                if sentence_index < len(sarvam_sentences):
+                    # Use Sarvam sentence for this segment
+                    sarvam_sentence = sarvam_sentences[sentence_index]
+                    print(f"🔍 Using Sarvam sentence {sentence_index + 1} for segment: '{sarvam_sentence[:50]}...'")
+                    
+                    output.append({
+                        "speaker": segment.get("speaker", "Unknown"),
+                        "start": segment.get("start_time", 0.0),
+                        "end": segment.get("end_time", 0.0),
+                        "text": sarvam_sentence.strip(),
+                        "confidence": segment.get("confidence", 0.0)
+                    })
+                    sentence_index += 1
+                else:
+                    # If we run out of Sarvam sentences, use original ElevenLabs text
+                    print(f"🔍 Using original ElevenLabs text for segment: '{original_text[:50]}...'")
+                    
+                    output.append({
+                        "speaker": segment.get("speaker", "Unknown"),
+                        "start": segment.get("start_time", 0.0),
+                        "end": segment.get("end_time", 0.0),
+                        "text": original_text,
+                        "confidence": segment.get("confidence", 0.0)
+                    })
+            
+            return output
+            
+        except Exception as e:
+            print(f"❌ Error distributing Sarvam text: {e}")
+            # Fallback: return original ElevenLabs segments
+            return [
+                {
+                    "speaker": segment.get("speaker", "Unknown"),
+                    "start": segment.get("start_time", 0.0),
+                    "end": segment.get("end_time", 0.0),
+                    "text": segment.get("text", "").strip(),
+                    "confidence": segment.get("confidence", 0.0)
+                }
+                for segment in elevenlabs_segments
+            ]
+    
+    def _split_sarvam_text(self, sarvam_text: str) -> List[str]:
+        """Split Sarvam text into sentences or logical chunks"""
+        try:
+            # Split by newlines first (if Sarvam returns multi-line text)
+            lines = [line.strip() for line in sarvam_text.split('\n') if line.strip()]
+            
+            if len(lines) > 1:
+                print(f"🔍 Split by newlines: {len(lines)} lines")
+                return lines
+            
+            # If no newlines, split by sentence endings
+            import re
+            sentences = re.split(r'[.!?]+\s*', sarvam_text)
+            sentences = [s.strip() for s in sentences if s.strip()]
+            
+            if len(sentences) > 1:
+                print(f"🔍 Split by sentences: {len(sentences)} sentences")
+                return sentences
+            
+            # If still only one chunk, split by approximate length
+            # Assume each segment should get roughly equal text
+            chunk_size = max(1, len(sarvam_text) // 3)  # Split into ~3 chunks
+            chunks = []
+            
+            for i in range(0, len(sarvam_text), chunk_size):
+                chunk = sarvam_text[i:i + chunk_size].strip()
+                if chunk:
+                    chunks.append(chunk)
+            
+            print(f"🔍 Split by chunks: {len(chunks)} chunks")
+            return chunks
+            
+        except Exception as e:
+            print(f"❌ Error splitting Sarvam text: {e}")
+            return [sarvam_text]  # Return as single chunk
 
-    def _patch_transcript_text(self, text: str, sarvam_words: List[str]) -> str:
-        """Patch transcript text by replacing Tamil transliterations with proper Tamil words"""
-        import re
-        
-        # Tokenize text (words with hyphens/apostrophes and punctuation)
-        tokens = re.findall(r"\b[\w'-]+\b|[.,!?;]", text)
-        corrected_tokens = []
-        
-        for token in tokens:
-            if re.match(r"[.,!?;]", token):  # Punctuation
-                corrected_tokens.append(token)
-            else:
-                corrected_word = self._find_closest_sarvam_match(token, sarvam_words)
-                corrected_tokens.append(corrected_word)
-        
-        # Join and clean up spacing around punctuation
-        result = ' '.join(corrected_tokens)
-        result = result.replace(" .", ".").replace(" ,", ",").replace(" ?", "?")
-        result = result.replace(" !", "!").replace(" ;", ";")
-        
-        return result
+
 
     def _clean_text(self, text: str) -> str:
         """Clean text for comparison"""

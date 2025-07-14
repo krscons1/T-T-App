@@ -4,15 +4,16 @@ import os
 import tempfile
 from typing import Dict
 from app.services.enhanced_transcription_service import enhanced_transcription_service
+from app.schemas.dual_pipeline import EnhancedTranscriptionResponse
 
 router = APIRouter(prefix="/api/v1/enhanced-transcription", tags=["Enhanced Transcription"])
 
 
-@router.post("/process")
+@router.post("/process", response_model=EnhancedTranscriptionResponse)
 async def process_enhanced_transcription(
     file: UploadFile = File(...),
     export_srt: bool = False
-) -> Dict:
+):
     """
     Process audio through enhanced transcription pipeline:
     - ElevenLabs for speaker diarization (uses original file - supports MP3, WAV, etc.)
@@ -56,27 +57,7 @@ async def process_enhanced_transcription(
             # Clean up temporary file
             os.unlink(temp_file.name)
             
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "success": True,
-                    "message": "Enhanced transcription completed successfully",
-                    "data": result,
-                    "file_info": {
-                        "original_filename": file.filename,
-                        "file_size_bytes": file_size,
-                        "file_format": os.path.splitext(file.filename)[1],
-                        "total_segments": len(result.get("final_transcript", [])),
-                        "audio_duration_seconds": result.get("processing_info", {}).get("audio_duration", 0),
-                        "processing_pipeline": {
-                            "elevenlabs": "Uses original file (supports MP3, WAV, M4A, etc.) for speaker diarization",
-                            "sarvam_api": "Uses prepared WAV file for Tamil accuracy",
-                            "tamil_detection": "Dynamic phrase detection with improved matching",
-                            "whisper": "Disabled for faster processing"
-                        }
-                    }
-                }
-            )
+            return result
             
         except Exception as e:
             # Clean up on error

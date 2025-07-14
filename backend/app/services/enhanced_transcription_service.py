@@ -8,6 +8,14 @@ from difflib import SequenceMatcher
 import httpx
 from app.core.config import settings
 from app.utils.audio_utils import transcribe_with_whisper_cpp
+import unicodedata
+from diff_match_patch import diff_match_patch
+from rapidfuzz import fuzz
+try:
+    from tamil_tokenizer.tokenizer import tokenize as tamil_tokenize
+except ImportError:
+    def tamil_tokenize(text):
+        return text.split()  # fallback: space split
 
 # Import Indic transliteration
 try:
@@ -17,6 +25,8 @@ try:
 except ImportError:
     print("⚠️  indic-transliteration not available. Install with: pip install indic-transliteration")
     INDIC_AVAILABLE = False
+
+from app.services.sarvam_batch_service import SarvamBatchService
 
 
 class EnhancedTranscriptionService:
@@ -48,6 +58,8 @@ class EnhancedTranscriptionService:
             print(f"❌ Whisper model not found at: {self.whisper_model_path}")
         else:
             print(f"✅ Whisper model found at: {self.whisper_model_path}")
+        
+        self.sarvam_batch = SarvamBatchService(api_key=os.getenv("SARVAM_API_KEY", "YOUR_API_KEY"))
     
     def _convert_thanglish_to_tamil(self, text: str) -> str:
         """Convert Thanglish (Tamil in English script) to Tamil using Indic transliteration"""
@@ -84,8 +96,140 @@ class EnhancedTranscriptionService:
             print(f"❌ Error inserting missing words: {e}")
             return text
     
+    def _normalize_text(self, text):
+        # Unicode NFC, remove ZWJ/ZWNJ, strip, remove duplicate spaces
+        text = unicodedata.normalize('NFC', text)
+        text = text.replace('\u200d', '').replace('\u200c', '')
+        text = ' '.join(text.split())
+        return text.strip()
 
-    
+    def _split_sentences(self, text):
+        # Split on Tamil full stop, Devanagari danda, or newlines
+        import re
+        return [s.strip() for s in re.split(r'[\.।\n]', text) if s.strip()]
+
+    def _find_overlap_tokens(self, seg, sarvam_segments):
+        # Find Sarvam segment overlapping in time, else fallback to greedy string search
+        seg_start = seg.get('start', seg.get('start_time', 0.0))
+        seg_end = seg.get('end', seg.get('end_time', 0.0))
+        best = None
+        best_score = 0
+        for s in sarvam_segments:
+            s_start = s.get('start', s.get('start_time', 0.0))
+            s_end = s.get('end', s.get('end_time', 0.0))
+            # Time overlap heuristic (±1s window)
+            if abs(seg_start - s_start) < 1.5 or abs(seg_end - s_end) < 1.5:
+                score = fuzz.token_sort_ratio(seg['text'], s['text'])
+                if score > best_score:
+                    best = s
+                    best_score = score
+        if best:
+            return tamil_tokenize(self._normalize_text(best['text']))
+        # fallback: greedy search
+        if sarvam_segments:
+            return tamil_tokenize(self._normalize_text(sarvam_segments[0]['text']))
+        return []
+
+    def _myers_token_diff(self, tokens1, tokens2):
+        dmp = diff_match_patch()
+        # Join tokens with \u200b (zero-width space) to avoid accidental merges
+        s1 = '\u200b'.join(tokens1)
+        s2 = '\u200b'.join(tokens2)
+        diffs = dmp.diff_main(s1, s2)
+        dmp.diff_cleanupSemantic(diffs)
+        # Split back to tokens
+        result = []
+        for op, chunk in diffs:
+            chunk_tokens = chunk.split('\u200b') if chunk else []
+            for tok in chunk_tokens:
+                if not tok:
+                    continue
+                if op == 0:
+                    result.append(('equal', tok))
+                elif op == -1:
+                    result.append(('delete', tok))
+                elif op == 1:
+                    result.append(('insert', tok))
+        return result
+
+    def _hybrid_merge_transcripts(self, elevenlabs, sarvam):
+        # Preprocess Sarvam into segments (if diarized), else treat as one
+        if isinstance(sarvam, str):
+            sarvam_sentences = self._split_sentences(sarvam)
+            sarvam_segments = [{'text': s} for s in sarvam_sentences]
+        elif isinstance(sarvam, list):
+            sarvam_segments = sarvam
+            sarvam_sentences = [s.get('text', '') for s in sarvam_segments]
+        else:
+            sarvam_segments = []
+            sarvam_sentences = []
+        merged = []
+        for seg in elevenlabs:
+            seg_text = self._normalize_text(seg.get('text', ''))
+            E_tokens = tamil_tokenize(seg_text)
+            S_tokens = self._find_overlap_tokens(seg, sarvam_segments)
+            diffs = self._myers_token_diff(E_tokens, S_tokens)
+            merged_tokens = []
+            for op, tok in diffs:
+                if op == 'equal':
+                    merged_tokens.append(tok)
+                elif op == 'insert':
+                    merged_tokens.append(tok)
+                elif op == 'delete':
+                    if fuzz.ratio(tok, tok) >= 75:
+                        merged_tokens.append(tok)
+                else:
+                    continue
+            merged_text = ' '.join(merged_tokens)
+            merged.append({
+                'speaker': seg.get('speaker', 'Unknown'),
+                'start': seg.get('start', seg.get('start_time', 0.0)),
+                'end': seg.get('end', seg.get('end_time', 0.0)),
+                'text': merged_text,
+                'confidence': seg.get('confidence', 0.0)
+            })
+        # Add any Sarvam sentences not present in any merged segment
+        unused = []
+        unused_segments = []
+        for i, s in enumerate(sarvam_segments):
+            s_text = s.get('text', '') if isinstance(s, dict) else s
+            s_norm = self._normalize_text(s_text)
+            found = False
+            for m in merged:
+                m_text = self._normalize_text(m['text'])
+                if s_norm in m_text:
+                    found = True
+                    break
+                if fuzz.ratio(s_norm, m_text) >= 85:
+                    found = True
+                    break
+            if not found and s_norm:
+                if isinstance(s, dict):
+                    # Diarized segment: preserve all fields
+                    unused_segments.append({
+                        'speaker': s.get('speaker', 'sarvam_extra'),
+                        'start': s.get('start', None),
+                        'end': s.get('end', None),
+                        'text': s_text,
+                        'confidence': s.get('confidence', 1.0)
+                    })
+                else:
+                    unused.append(s_text)
+        # Append unmatched diarized segments individually
+        merged.extend(unused_segments)
+        # For plain string input, append each unmatched as its own segment
+        for u in unused:
+            merged.append({
+                'speaker': 'sarvam_extra',
+                'start': None,
+                'end': None,
+                'text': u,
+                'confidence': 1.0
+            })
+        # Sort merged segments by start time (None values last)
+        merged.sort(key=lambda seg: (seg['start'] is None, seg['start'] if seg['start'] is not None else float('inf')))
+        return merged
+
     async def process_enhanced_transcription(self, audio_file_path: str) -> Dict:
         """
         Main method to process audio through all three pipelines
@@ -100,12 +244,74 @@ class EnhancedTranscriptionService:
             elevenlabs_result = await self._get_elevenlabs_transcript(audio_file_path)
             
             # Step 3: Get Sarvam transcript for Tamil accuracy (uses prepared WAV)
-            sarvam_result = await self._get_sarvam_transcript(prepared_audio)
-            
-            # Step 4: Merge results (ElevenLabs as base, Sarvam for Tamil accuracy)
-            final_transcript = await self._merge_transcripts(
-                elevenlabs_result, sarvam_result
+            # Use Sarvam batch diarization
+            sarvam_transcript, sarvam_diarized = await self.sarvam_batch.batch_transcribe(
+                prepared_audio, language_code="ta-IN", diarization=True
             )
+            # Always map diarized entries to expected format for merging
+            if sarvam_diarized and "entries" in sarvam_diarized:
+                sarvam_diarized_entries = [
+                    {
+                        "text": entry.get("transcript", ""),
+                        "speaker": entry.get("speaker_id", "sarvam"),
+                        "start": entry.get("start_time_seconds", None),
+                        "end": entry.get("end_time_seconds", None),
+                    }
+                    for entry in sarvam_diarized["entries"]
+                ]
+            else:
+                sarvam_diarized_entries = sarvam_transcript
+
+            # --- NEW LOGIC: Length check only ---
+            if isinstance(sarvam_diarized_entries, list):
+                sarvam_diarized_text = " ".join([seg.get("text", "") for seg in sarvam_diarized_entries])
+            else:
+                sarvam_diarized_text = str(sarvam_diarized_entries or "")
+            elevenlabs_text = " ".join([seg.get("text", "") for seg in elevenlabs_result]) if elevenlabs_result else ""
+            if len(sarvam_diarized_text) < len(elevenlabs_text):
+                print("⚡ Skipping merge: Sarvam diarized transcript is shorter than ElevenLabs transcript. Returning ElevenLabs transcript as final output.")
+                final_transcript = [
+                    {
+                        "speaker": seg.get("speaker", "Unknown"),
+                        "start": seg.get("start_time", 0.0),
+                        "end": seg.get("end_time", 0.0),
+                        "text": seg.get("text", ""),
+                        "confidence": seg.get("confidence", 0.0)
+                    }
+                    for seg in elevenlabs_result
+                ]
+            else:
+                final_transcript = self._hybrid_merge_transcripts(
+                    elevenlabs_result, sarvam_diarized_entries
+                )
+            
+            # Fallback: if Sarvam transcript is longer, use Sarvam as final
+            sarvam_text = self._normalize_text(sarvam_transcript or "")
+            merged_text = ' '.join([seg['text'] for seg in final_transcript])
+            if len(sarvam_text) > len(self._normalize_text(merged_text)):
+                if sarvam_diarized and "entries" in sarvam_diarized:
+                    sarvam_segments = [
+                        {
+                            'speaker': entry.get('speaker_id', 'sarvam'),
+                            'start': entry.get('start_time_seconds', None),
+                            'end': entry.get('end_time_seconds', None),
+                            'text': entry.get('transcript', ''),
+                            'confidence': 1.0
+                        }
+                        for entry in sarvam_diarized["entries"]
+                    ]
+                else:
+                    sarvam_segments = [
+                        {
+                            'speaker': 'sarvam',
+                            'start': None,
+                            'end': None,
+                            'text': s,
+                            'confidence': 1.0
+                        }
+                        for s in self._split_sentences(sarvam_text)
+                    ]
+                final_transcript = sarvam_segments
             
             # Create transliterated ElevenLabs transcript
             transliterated_elevenlabs = []
@@ -113,7 +319,7 @@ class EnhancedTranscriptionService:
                 for segment in elevenlabs_result:
                     original_text = segment.get("text", "").strip()
                     if original_text:
-                        # Convert to Tamil using Indic transliteration
+                        # Transliterated version (convert to Tamil)
                         tamil_text = self._convert_thanglish_to_tamil(original_text)
                         transliterated_elevenlabs.append({
                             "speaker": segment.get("speaker", "Unknown"),
@@ -128,7 +334,8 @@ class EnhancedTranscriptionService:
                 "final_transcript": final_transcript,
                 "elevenlabs_transcript": elevenlabs_result,
                 "transliterated_elevenlabs": transliterated_elevenlabs,
-                "sarvam_transcript": sarvam_result.get("transcript", ""),
+                "sarvam_transcript": sarvam_transcript,
+                "sarvam_diarized_transcript": sarvam_diarized,
                 "processing_info": {
                     "total_segments": len(final_transcript),
                     "original_file": audio_file_path,
@@ -430,60 +637,6 @@ class EnhancedTranscriptionService:
                 print(f"❌ Sarvam fallback also failed: {fallback_error}")
                 return {"transcript": ""}
     
-    async def _merge_transcripts(
-        self, 
-        elevenlabs_result: List[Dict], 
-        sarvam_result: Dict
-    ) -> List[Dict]:
-        """Merge transcripts - use ElevenLabs as base, Sarvam if longer"""
-        try:
-            print("🔗 Merging transcripts - ElevenLabs as base, Sarvam if longer...")
-            
-            sarvam_text = sarvam_result.get("transcript", "")
-            
-            # Calculate transcript lengths
-            elevenlabs_length = sum(len(segment.get("text", "")) for segment in elevenlabs_result) if elevenlabs_result else 0
-            sarvam_length = len(sarvam_text)
-            
-            print(f"📊 ElevenLabs transcript length: {elevenlabs_length} characters")
-            print(f"📊 Sarvam transcript length: {sarvam_length} characters")
-            
-            # If ElevenLabs failed or is empty, use Sarvam
-            if not elevenlabs_result or elevenlabs_length == 0:
-                print("✅ Using Sarvam transcript (ElevenLabs failed/empty)")
-                # Create a simple segment structure for Sarvam
-                output = [{
-                    "speaker": "speaker_0",
-                    "start": 0.0,
-                    "end": 0.0,
-                    "text": sarvam_text,
-                    "confidence": 0.9
-                }]
-                return output
-            
-            # Use ElevenLabs as base, but use Sarvam if it's longer
-            if sarvam_length > elevenlabs_length:
-                print("✅ Using Sarvam transcript (longer)")
-                # Distribute Sarvam text intelligently across segments
-                output = self._distribute_sarvam_text(elevenlabs_result, sarvam_text)
-                return output
-            else:
-                print("✅ Using ElevenLabs transcript (base)")
-                output = []
-                for segment in elevenlabs_result:
-                    output.append({
-                        "speaker": segment.get("speaker", "Unknown"),
-                        "start": segment.get("start_time", 0.0),
-                        "end": segment.get("end_time", 0.0),
-                        "text": segment.get("text", "").strip(),
-                        "confidence": segment.get("confidence", 0.0)
-                    })
-                return output
-            
-        except Exception as e:
-            print(f"❌ Transcript merging failed: {e}")
-            return []
-    
     def _distribute_sarvam_text(self, elevenlabs_segments: List[Dict], sarvam_text: str) -> List[Dict]:
         """Distribute Sarvam text intelligently across ElevenLabs segments"""
         try:
@@ -603,6 +756,22 @@ class EnhancedTranscriptionService:
         """Check if text contains Tamil words using Unicode range"""
         # Unicode range for Tamil: U+0B80 to U+0BFF
         return any('\u0B80' <= char <= '\u0BFF' for char in text)
+    
+    def _is_thanglish(self, text: str) -> bool:
+        """Detect if text is Thanglish (Tamil in Latin script or code-mixed):
+        - Mostly Latin letters, little Tamil Unicode
+        """
+        if not text:
+            return False
+        tamil_count = sum('\u0B80' <= c <= '\u0BFF' for c in text)
+        latin_count = sum('a' <= c.lower() <= 'z' for c in text)
+        total_alpha = sum(c.isalpha() for c in text)
+        if total_alpha == 0:
+            return False
+        latin_ratio = latin_count / total_alpha
+        tamil_ratio = tamil_count / total_alpha
+        # Consider Thanglish if mostly Latin and little Tamil
+        return latin_ratio > 0.6 and tamil_ratio < 0.4
     
     def export_to_srt(self, transcript: List[Dict], output_path: str):
         """Export transcript to SRT format"""

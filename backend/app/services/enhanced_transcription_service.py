@@ -244,11 +244,9 @@ class EnhancedTranscriptionService:
             elevenlabs_result = await self._get_elevenlabs_transcript(audio_file_path)
             
             # Step 3: Get Sarvam transcript for Tamil accuracy (uses prepared WAV)
-            # Use Sarvam batch diarization
             sarvam_transcript, sarvam_diarized = await self.sarvam_batch.batch_transcribe(
                 prepared_audio, language_code="ta-IN", diarization=True
             )
-            # Always map diarized entries to expected format for merging
             if sarvam_diarized and "entries" in sarvam_diarized:
                 sarvam_diarized_entries = [
                     {
@@ -262,64 +260,40 @@ class EnhancedTranscriptionService:
             else:
                 sarvam_diarized_entries = sarvam_transcript
 
-            # --- NEW LOGIC: Length check only ---
-            if isinstance(sarvam_diarized_entries, list):
-                sarvam_diarized_text = " ".join([seg.get("text", "") for seg in sarvam_diarized_entries])
-            else:
-                sarvam_diarized_text = str(sarvam_diarized_entries or "")
+            # --- Fallback logic: use Sarvam diarized if ElevenLabs is not in Tamil ---
             elevenlabs_text = " ".join([seg.get("text", "") for seg in elevenlabs_result]) if elevenlabs_result else ""
-            if len(sarvam_diarized_text) < len(elevenlabs_text):
-                print("⚡ Skipping merge: Sarvam diarized transcript is shorter than ElevenLabs transcript. Returning ElevenLabs transcript as final output.")
-                final_transcript = [
-                    {
-                        "speaker": seg.get("speaker", "Unknown"),
-                        "start": seg.get("start_time", 0.0),
-                        "end": seg.get("end_time", 0.0),
-                        "text": seg.get("text", ""),
-                        "confidence": seg.get("confidence", 0.0)
-                    }
-                    for seg in elevenlabs_result
-                ]
+            if not self._is_tamil(elevenlabs_text):
+                print("⚠️ ElevenLabs output is not in Tamil. Using Sarvam diarized transcript as final transcript.")
+                final_transcript = sarvam_diarized_entries if isinstance(sarvam_diarized_entries, list) else []
             else:
-                final_transcript = self._hybrid_merge_transcripts(
-                    elevenlabs_result, sarvam_diarized_entries
-                )
-            
-            # Fallback: if Sarvam transcript is longer, use Sarvam as final
-            sarvam_text = self._normalize_text(sarvam_transcript or "")
-            merged_text = ' '.join([seg['text'] for seg in final_transcript])
-            if len(sarvam_text) > len(self._normalize_text(merged_text)):
-                if sarvam_diarized and "entries" in sarvam_diarized:
-                    sarvam_segments = [
+                # --- Existing logic: length check and merging ---
+                if isinstance(sarvam_diarized_entries, list):
+                    sarvam_diarized_text = " ".join([seg.get("text", "") for seg in sarvam_diarized_entries])
+                else:
+                    sarvam_diarized_text = str(sarvam_diarized_entries or "")
+                if len(sarvam_diarized_text) < len(elevenlabs_text):
+                    print("⚡ Skipping merge: Sarvam diarized transcript is shorter than ElevenLabs transcript. Returning ElevenLabs transcript as final output.")
+                    final_transcript = [
                         {
-                            'speaker': entry.get('speaker_id', 'sarvam'),
-                            'start': entry.get('start_time_seconds', None),
-                            'end': entry.get('end_time_seconds', None),
-                            'text': entry.get('transcript', ''),
-                            'confidence': 1.0
+                            "speaker": seg.get("speaker", "Unknown"),
+                            "start": seg.get("start_time", 0.0),
+                            "end": seg.get("end_time", 0.0),
+                            "text": seg.get("text", ""),
+                            "confidence": seg.get("confidence", 0.0)
                         }
-                        for entry in sarvam_diarized["entries"]
+                        for seg in elevenlabs_result
                     ]
                 else:
-                    sarvam_segments = [
-                        {
-                            'speaker': 'sarvam',
-                            'start': None,
-                            'end': None,
-                            'text': s,
-                            'confidence': 1.0
-                        }
-                        for s in self._split_sentences(sarvam_text)
-                    ]
-                final_transcript = sarvam_segments
-            
-            # Create transliterated ElevenLabs transcript
+                    final_transcript = self._hybrid_merge_transcripts(
+                        elevenlabs_result, sarvam_diarized_entries
+                    )
+
+            # Transliterated ElevenLabs (optional)
             transliterated_elevenlabs = []
-            if elevenlabs_result:  # Only process if we have actual results
+            if elevenlabs_result:
                 for segment in elevenlabs_result:
                     original_text = segment.get("text", "").strip()
                     if original_text:
-                        # Transliterated version (convert to Tamil)
                         tamil_text = self._convert_thanglish_to_tamil(original_text)
                         transliterated_elevenlabs.append({
                             "speaker": segment.get("speaker", "Unknown"),
@@ -328,7 +302,6 @@ class EnhancedTranscriptionService:
                             "text": tamil_text,
                             "confidence": segment.get("confidence", 0.0)
                         })
-            
             return {
                 "success": True,
                 "final_transcript": final_transcript,
@@ -343,7 +316,6 @@ class EnhancedTranscriptionService:
                     "whisper_disabled": True
                 }
             }
-            
         except Exception as e:
             print(f"❌ Error in enhanced transcription: {e}")
             return {
@@ -773,6 +745,10 @@ class EnhancedTranscriptionService:
         # Consider Thanglish if mostly Latin and little Tamil
         return latin_ratio > 0.6 and tamil_ratio < 0.4
     
+    def _is_tamil(self, text):
+        """Check if the text contains Tamil script characters."""
+        return any('\u0B80' <= char <= '\u0BFF' for char in text)
+
     def export_to_srt(self, transcript: List[Dict], output_path: str):
         """Export transcript to SRT format"""
         try:

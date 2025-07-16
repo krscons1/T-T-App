@@ -237,11 +237,11 @@ class EnhancedTranscriptionService:
         try:
             print("🔄 Starting enhanced transcription pipeline...")
             
-            # Step 1: Prepare audio (convert to mono WAV at 16kHz) for Sarvam only
+            # Step 1: Prepare audio (convert to mono WAV at 16kHz) for Sarvam and ElevenLabs
             prepared_audio = await self._prepare_audio(audio_file_path)
             
-            # Step 2: Get ElevenLabs transcript with speaker diarization (uses original file)
-            elevenlabs_result = await self._get_elevenlabs_transcript(audio_file_path)
+            # Step 2: Get ElevenLabs transcript with speaker diarization (now uses prepared WAV)
+            elevenlabs_result = await self._get_elevenlabs_transcript(prepared_audio)
             
             # Step 3: Get Sarvam transcript for Tamil accuracy (uses prepared WAV)
             sarvam_transcript, sarvam_diarized = await self.sarvam_batch.batch_transcribe(
@@ -541,7 +541,7 @@ class EnhancedTranscriptionService:
             return {"segments": [], "duration": 0}
     
     async def _get_elevenlabs_transcript(self, audio_file_path: str) -> List[Dict]:
-        """Get ElevenLabs transcript with speaker diarization"""
+        """Get ElevenLabs transcript with speaker diarization (now expects WAV)"""
         try:
             print("🎤 Getting ElevenLabs transcript...")
             

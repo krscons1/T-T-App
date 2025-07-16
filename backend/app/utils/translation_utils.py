@@ -8,10 +8,9 @@ except ImportError:
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-MODEL_NAME = "ai4bharat/indictrans2-en-indic-1B"
+MODEL_NAME = "ai4bharat/indictrans2-indic-en-dist-200M"
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
 
-# Try to use flash attention if available, else fallback
 model_kwargs = {
     "trust_remote_code": True,
     "torch_dtype": torch.float16 if torch.cuda.is_available() else torch.float32,
@@ -31,10 +30,7 @@ if IndicProcessor:
 else:
     ip = None
 
-def translate_text(text, src_lang="eng_Latn", tgt_lang="tam_Taml"):
-    """
-    Translate a single string from src_lang to tgt_lang using IndicTrans2 advanced workflow.
-    """
+def translate_text(text, src_lang="hin_Deva", tgt_lang="eng_Latn"):
     if not ip:
         raise ImportError("IndicTransToolkit is not installed.")
     batch = ip.preprocess_batch([text], src_lang=src_lang, tgt_lang=tgt_lang)
@@ -62,10 +58,7 @@ def translate_text(text, src_lang="eng_Latn", tgt_lang="tam_Taml"):
     translations = ip.postprocess_batch(generated_texts, lang=tgt_lang)
     return translations[0] if translations else ""
 
-def translate_batch(texts, src_lang="eng_Latn", tgt_lang="tam_Taml"):
-    """
-    Translate a list of strings from src_lang to tgt_lang using IndicTrans2 advanced workflow.
-    """
+def translate_batch(texts, src_lang="hin_Deva", tgt_lang="eng_Latn"):
     if not ip:
         raise ImportError("IndicTransToolkit is not installed.")
     batch = ip.preprocess_batch(texts, src_lang=src_lang, tgt_lang=tgt_lang)

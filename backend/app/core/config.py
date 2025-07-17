@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # HuggingFace Configuration
     HUGGINGFACE_AUTH_TOKEN: str = os.getenv("HUGGINGFACE_AUTH_TOKEN", "")
     
+    # Gemini API Key
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    
     # File Upload Settings
     MAX_FILE_SIZE: int = 100 * 1024 * 1024  # 100MB
     UPLOAD_DIR: str = "uploads"

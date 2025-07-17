@@ -16,9 +16,9 @@ class TranscriptionResponse(BaseModel):
 
 class TranslationRequest(BaseModel):
     text: str
-    source_language: str = "ta"
-    target_language: str = "en"
-    model: str = "mayura"
+    source_language: str = "ta-IN"
+    target_language: str = "en-IN"
+    model: str = "sarvam-translate:v1"
 
 class TranslationResponse(BaseModel):
     original_text: str
@@ -26,6 +26,7 @@ class TranslationResponse(BaseModel):
     source_language: str
     target_language: str
     confidence: Optional[float] = None
+    paraphrased_text: Optional[str] = None
 
 class ProcessFileResponse(BaseModel):
     filename: str

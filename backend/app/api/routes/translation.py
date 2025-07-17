@@ -5,6 +5,7 @@ import os
 from app.services.sarvam_service import sarvam_service
 from dotenv import load_dotenv
 import logging
+import httpx
 
 router = APIRouter()
 
@@ -18,6 +19,32 @@ LANG_CODE_MAP = {
     "hin_Deva": "hi-IN",
     # Add more mappings as needed
 }
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+async def paraphrase_with_gemini(formal_text: str) -> str:
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+    headers = {"Content-Type": "application/json", "X-goog-api-key": GEMINI_API_KEY}
+    prompt = (
+        "You are a professional paraphraser. Rewrite the following text from a formal tone into a friendly, natural, and conversational tone—similar to how a person would casually explain it. "
+        "Keep the meaning accurate, simplify the sentence structures, and avoid sounding robotic, stiff, or overly professional. Eliminate formal words and replace them with everyday language.\n"
+        "Return only the paraphrased text, without any introduction, explanation, or extra content.\n\n"
+        f"{formal_text}"
+    )
+    data = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt}
+                ]
+            }
+        ]
+    }
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, headers=headers, json=data, timeout=30)
+        response.raise_for_status()
+        result = response.json()
+        return result["candidates"][0]["content"]["parts"][0]["text"]
 
 @router.post("/translate", response_model=TranslationResponse)
 async def translate(request: TranslationRequest):
@@ -34,11 +61,20 @@ async def translate(request: TranslationRequest):
         )
         
         logging.warning(f"SarvamAI response: {response}")
-        processing_time = time.time() - start_time
-        
-        # Update the response with processing time
-        response.processing_time = processing_time
-        return response
-        
+        # Paraphrase with Gemini
+        paraphrased_text = None
+        try:
+            paraphrased_text = await paraphrase_with_gemini(response.translated_text)
+        except Exception as e:
+            logging.error(f"Gemini paraphrasing failed: {e}")
+        # Return both formal and paraphrased text
+        return TranslationResponse(
+            original_text=response.original_text,
+            translated_text=response.translated_text,
+            source_language=response.source_language,
+            target_language=response.target_language,
+            confidence=response.confidence,
+            paraphrased_text=paraphrased_text
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}") 

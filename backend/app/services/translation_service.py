@@ -1,48 +1,61 @@
-# Translation service placeholder 
+import httpx
+import os
+from app.schemas.transcription import TranslationResponse
+from app.core.config import settings
 
-import torch
-from transformers import NllbTokenizer, M2M100ForConditionalGeneration
-import logging
+class SarvamTranslateHandler:
+    def __init__(self):
+        self.base_url = getattr(settings, 'SARVAM_BASE_URL', os.getenv('SARVAM_BASE_URL', 'https://api.sarvam.ai'))
+        self.api_key = getattr(settings, 'SARVAM_API_KEY', os.getenv('SARVAM_API_KEY', 'YOUR_API_KEY'))
+        self.headers = {"api-subscription-key": self.api_key}
 
-class NLLBModelHandler:
-    def __init__(self, model_name: str = "facebook/nllb-200-distilled-600M"):
-        self.model_name = model_name
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = None
-        self.tokenizer = None
-        self.load_model()
+    async def translate_text(self, text: str, source_lang: str = "ta-IN", target_lang: str = "en-IN") -> TranslationResponse:
+        """
+        Translate text using Sarvam AI's sarvam-translate:v1 model with chunking for large texts.
+        """
+        url = f"{self.base_url}/translate"
+        max_length = 2000  # Sarvam-Translate:v1 chunk limit
 
-    def load_model(self):
-        try:
-            self.tokenizer = NllbTokenizer.from_pretrained(
-                self.model_name,
-                src_lang="tam_Taml",
-                tgt_lang="eng_Latn"
-            )
-            self.model = M2M100ForConditionalGeneration.from_pretrained(
-                self.model_name
-            ).to(self.device)
-            logging.info(f"Model loaded successfully: {self.model_name}")
-        except Exception as e:
-            logging.error(f"Error loading model: {e}")
-            raise
+        def chunk_text(text, max_length=2000):
+            chunks = []
+            while len(text) > max_length:
+                split_index = text.rfind(" ", 0, max_length)
+                if split_index == -1:
+                    split_index = max_length
+                chunks.append(text[:split_index].strip())
+                text = text[split_index:].lstrip()
+            if text:
+                chunks.append(text.strip())
+            return chunks
 
-    def translate_text(self, text: str, src_lang: str = "tam_Taml", tgt_lang: str = "eng_Latn") -> str:
-        try:
-            self.tokenizer.src_lang = src_lang
-            self.tokenizer.tgt_lang = tgt_lang
-            inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
-            with torch.no_grad():
-                generated_tokens = self.model.generate(
-                    **inputs,
-                    forced_bos_token_id=self.tokenizer.lang_code_to_id[tgt_lang],
-                    max_length=512,
-                    num_beams=5,
-                    early_stopping=True
+        text_chunks = chunk_text(text, max_length)
+        translated_chunks = []
+
+        async with httpx.AsyncClient() as client:
+            for chunk in text_chunks:
+                payload = {
+                    "input": chunk,
+                    "source_language_code": source_lang,
+                    "target_language_code": target_lang,
+                    "speaker_gender": "Male",
+                    "mode": "formal",
+                    "model": "sarvam-translate:v1"
+                }
+                response = await client.post(
+                    url,
+                    headers={**self.headers, "Content-Type": "application/json"},
+                    json=payload,
+                    timeout=30.0
                 )
-            translation = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)[0]
-            return translation
-        except Exception as e:
-            logging.error(f"Translation error: {e}")
-            return f"Translation failed: {str(e)}" 
+                response.raise_for_status()
+                result = response.json()
+                translated_chunks.append(result.get('translated_text', ''))
+
+        full_translation = "\n".join(translated_chunks)
+        return TranslationResponse(
+            original_text=text,
+            translated_text=full_translation,
+            source_language=source_lang,
+            target_language=target_lang,
+            confidence=None
+        ) 

@@ -266,12 +266,15 @@ class EnhancedTranscriptionService:
                 print("⚠️ ElevenLabs output is not in Tamil. Using Sarvam diarized transcript as final transcript.")
                 final_transcript = sarvam_diarized_entries if isinstance(sarvam_diarized_entries, list) else []
             else:
-                # --- Existing logic: length check and merging ---
+                # --- Updated logic: if Sarvam diarized transcript is longer, always use it ---
                 if isinstance(sarvam_diarized_entries, list):
                     sarvam_diarized_text = " ".join([seg.get("text", "") for seg in sarvam_diarized_entries])
                 else:
                     sarvam_diarized_text = str(sarvam_diarized_entries or "")
-                if len(sarvam_diarized_text) < len(elevenlabs_text):
+                if len(sarvam_diarized_text) > len(elevenlabs_text):
+                    print("✅ Sarvam diarized transcript is longer. Returning Sarvam diarized transcript as final output.")
+                    final_transcript = sarvam_diarized_entries if isinstance(sarvam_diarized_entries, list) else []
+                elif len(sarvam_diarized_text) < len(elevenlabs_text):
                     print("⚡ Skipping merge: Sarvam diarized transcript is shorter than ElevenLabs transcript. Returning ElevenLabs transcript as final output.")
                     final_transcript = [
                         {

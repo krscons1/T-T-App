@@ -8,6 +8,7 @@ import { ProgressFlow } from "@/components/progress-flow"
 import { ResultSection } from "@/components/result-section"
 import { Footer } from "@/components/footer"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { enhancedTranscription, translateText } from "@/lib/api";
 
 export default function Home() {
   const [currentStep, setCurrentStep] = useState(0)
@@ -21,18 +22,32 @@ export default function Home() {
     setCurrentStep(1)
     setIsProcessing(true)
 
-    // Simulate transcription process
-    setTimeout(() => {
-      setTranscription("வணக்கம், இது ஒரு சோதனை செய்தி. நான் தமிழில் பேசுகிறேன்.")
+    try {
+      // Call backend for enhanced transcription
+      const result = await enhancedTranscription(file)
+      setTranscription(result.final_transcript?.map((seg: any) => seg.text).join(' ') || '')
       setCurrentStep(2)
 
-      // Simulate translation process
-      setTimeout(() => {
-        setTranslation("Hello, this is a test message. I am speaking in Tamil.")
-        setCurrentStep(3)
-        setIsProcessing(false)
-      }, 2000)
-    }, 3000)
+      // Call backend for translation using the transcript
+      const translationResult = await translateText(
+        result.final_transcript?.map((seg: any) => seg.text).join(' ') || '',
+        "ta-IN",
+        "en-IN"
+      )
+      setTranslation(
+        translationResult.improved_paraphrased_text ||
+        translationResult.improved_translation ||
+        translationResult.translated_text ||
+        ''
+      )
+      setCurrentStep(3)
+    } catch (err) {
+      setTranscription('Error during transcription or translation.')
+      setTranslation('')
+      setCurrentStep(3)
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   const resetApp = () => {

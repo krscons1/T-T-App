@@ -27,6 +27,7 @@ except ImportError:
     INDIC_AVAILABLE = False
 
 from app.services.sarvam_batch_service import SarvamBatchService
+from supabase_client import supabase
 
 
 class EnhancedTranscriptionService:
@@ -771,6 +772,16 @@ class EnhancedTranscriptionService:
             
         except Exception as e:
             print(f"❌ SRT export failed: {e}")
+
+    async def store_transcription_in_db(self, transcript_data: dict) -> None:
+        """
+        Store the enhanced transcript and translation output in Supabase DB.
+        """
+        try:
+            response = supabase.table("transcripts").insert(transcript_data).execute()
+            print(f"✅ Transcript stored in Supabase: {response.data}")
+        except Exception as e:
+            print(f"❌ Exception while storing transcript in Supabase: {e}")
 
 
 # Create service instance

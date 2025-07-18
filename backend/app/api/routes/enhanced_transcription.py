@@ -47,6 +47,17 @@ async def process_enhanced_transcription(
             
             if not result["success"]:
                 raise HTTPException(status_code=500, detail=f"Processing failed: {result.get('error', 'Unknown error')}")
+
+            # Store in Supabase DB
+            await enhanced_transcription_service.store_transcription_in_db({
+                "filename": file.filename,
+                "final_transcript": result["final_transcript"],
+                "elevenlabs_transcript": result["elevenlabs_transcript"],
+                "transliterated_elevenlabs": result["transliterated_elevenlabs"],
+                "sarvam_transcript": result["sarvam_transcript"],
+                "sarvam_diarized_transcript": result["sarvam_diarized_transcript"],
+                "processing_info": result["processing_info"]
+            })
             
             # Export to SRT if requested
             if export_srt and result["final_transcript"]:

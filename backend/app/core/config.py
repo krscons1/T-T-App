@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # CORS Settings
     ALLOWED_ORIGINS: list = ["*"]
     
+    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+    SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
+    
     class Config:
         env_file = ".env"
 

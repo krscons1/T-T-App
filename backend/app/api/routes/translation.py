@@ -6,6 +6,7 @@ from app.services.sarvam_service import sarvam_service
 from dotenv import load_dotenv
 import logging
 import httpx
+from app.services.sarvam_chat_service import get_more_accurate_translation
 
 router = APIRouter()
 
@@ -61,20 +62,30 @@ async def translate(request: TranslationRequest):
         )
         
         logging.warning(f"SarvamAI response: {response}")
-        # Paraphrase with Gemini
+        # Improved translation using Sarvam LLM chat completion
+        improved_translation = get_more_accurate_translation(request.text, response.translated_text)
+        # Paraphrase the improved translation
+        improved_paraphrased_text = None
+        try:
+            improved_paraphrased_text = await paraphrase_with_gemini(improved_translation)
+        except Exception as e:
+            logging.error(f"Gemini paraphrasing failed: {e}")
+        # Paraphrase the original translation (optional, keep for backward compatibility)
         paraphrased_text = None
         try:
             paraphrased_text = await paraphrase_with_gemini(response.translated_text)
         except Exception as e:
             logging.error(f"Gemini paraphrasing failed: {e}")
-        # Return both formal and paraphrased text
+        # Return all fields
         return TranslationResponse(
             original_text=response.original_text,
             translated_text=response.translated_text,
             source_language=response.source_language,
             target_language=response.target_language,
             confidence=response.confidence,
-            paraphrased_text=paraphrased_text
+            paraphrased_text=paraphrased_text,
+            improved_translation=improved_translation,
+            improved_paraphrased_text=improved_paraphrased_text
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}") 

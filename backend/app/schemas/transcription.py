@@ -27,6 +27,8 @@ class TranslationResponse(BaseModel):
     target_language: str
     confidence: Optional[float] = None
     paraphrased_text: Optional[str] = None
+    improved_translation: Optional[str] = None
+    improved_paraphrased_text: Optional[str] = None
 
 class ProcessFileResponse(BaseModel):
     filename: str

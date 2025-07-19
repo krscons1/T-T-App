@@ -16,6 +16,7 @@ export default function Home() {
   const [transcription, setTranscription] = useState("")
   const [translation, setTranslation] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
+  const [transcriptSegments, setTranscriptSegments] = useState<any[]>([]);
 
   const handleFileUpload = async (file: File) => {
     setUploadedFile(file)
@@ -25,6 +26,7 @@ export default function Home() {
     try {
       // Call backend for enhanced transcription
       const result = await enhancedTranscription(file)
+      setTranscriptSegments(result.final_transcript || [])
       setTranscription(result.final_transcript?.map((seg: any) => seg.text).join(' ') || '')
       setCurrentStep(2)
 
@@ -42,6 +44,7 @@ export default function Home() {
       )
       setCurrentStep(3)
     } catch (err) {
+      setTranscriptSegments([])
       setTranscription('Error during transcription or translation.')
       setTranslation('')
       setCurrentStep(3)
@@ -85,7 +88,7 @@ export default function Home() {
             {currentStep > 0 && (
               <ResultSection
                 file={uploadedFile}
-                transcription={transcription}
+                transcription={transcriptSegments}
                 translation={translation}
                 currentStep={currentStep}
                 isProcessing={isProcessing}

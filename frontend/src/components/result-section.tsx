@@ -6,9 +6,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Copy, Download, Share2, Play, Pause, RotateCcw, CheckCircle } from "lucide-react"
 
+// Add a helper to format seconds as mm:ss
+function formatTime(seconds: number | undefined) {
+  if (typeof seconds !== 'number' || isNaN(seconds)) return '';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  return h > 0
+    ? `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+    : `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
 interface ResultSectionProps {
   file: File | null
-  transcription: string
+  transcription: any // Accepts array or string
   translation: string
   currentStep: number
   isProcessing: boolean
@@ -189,7 +200,24 @@ export function ResultSection({
                           <CheckCircle className="w-5 h-5" />
                           <span className="font-medium">Transcription Complete</span>
                         </div>
-                        <p className="text-white text-lg leading-relaxed">{transcription}</p>
+                        <div className="text-white text-lg leading-relaxed flex flex-wrap gap-y-2">
+                          {Array.isArray(transcription) && transcription.length > 0 ? (
+                            transcription.map((seg, idx) => (
+                              <span
+                                key={idx}
+                                title={`Start: ${formatTime(seg.start)} | End: ${formatTime(seg.end)}${seg.speaker ? ` | Speaker: ${seg.speaker}` : ''}`}
+                                className="hover:underline cursor-pointer px-1 py-0.5 rounded transition-colors duration-200 hover:bg-blue-900/40"
+                                style={{ marginRight: 4, display: 'inline-block' }}
+                              >
+                                <span className="text-purple-300 mr-1">[{formatTime(seg.start)} - {formatTime(seg.end)}]</span>
+                                {seg.speaker ? <span className="font-bold text-blue-300 mr-1">[{seg.speaker}]</span> : null}
+                                {seg.text + ' '}
+                              </span>
+                            ))
+                          ) : (
+                            <span>{typeof transcription === 'string' ? transcription : ''}</span>
+                          )}
+                        </div>
                       </div>
                     ) : currentStep === 1 ? (
                       <div className="flex items-center gap-3 text-blue-400">

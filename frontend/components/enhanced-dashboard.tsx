@@ -59,9 +59,15 @@ export function EnhancedDashboard() {
         className={`relative z-10 min-h-screen flex transition-all duration-1000 ${isVisible ? "opacity-100" : "opacity-0"}`}
       >
         <EnhancedSidebar activePage={activePage} onPageChange={setActivePage} />
-        <main className="flex-1 ml-20 lg:ml-72 transition-all duration-300 relative">
+
+        {/* Main Content Area - Centered with fixed sidebar */}
+        <main className="flex-1 pl-72 transition-all duration-500 ease-in-out relative">
           <div className="absolute inset-0 bg-gradient-to-br from-slate-900/50 to-slate-800/30 backdrop-blur-sm"></div>
-          <div className="relative z-10">{renderContent()}</div>
+
+          {/* Centered Content Container */}
+          <div className="relative z-10 min-h-screen flex items-start justify-center">
+            <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">{renderContent()}</div>
+          </div>
         </main>
       </div>
     </div>

@@ -98,11 +98,11 @@ export function AnimatedProcessingPipeline({ currentStep, progress }: AnimatedPr
   return (
     <Card className="bg-slate-800/50 backdrop-blur-xl border-slate-700/50 shadow-2xl">
       <CardHeader>
-        <CardTitle className="text-white text-2xl">Neural Processing Pipeline</CardTitle>
-        <CardDescription className="text-slate-400 text-lg">Advanced AI algorithms at work</CardDescription>
+        <CardTitle className="text-white text-xl">Neural Processing Pipeline</CardTitle>
+        <CardDescription className="text-slate-400 text-base">Advanced AI algorithms at work</CardDescription>
       </CardHeader>
       <CardContent>
-        <div ref={containerRef} className="space-y-10">
+        <div ref={containerRef} className="space-y-8">
           {steps.map((step, index) => {
             const Icon = step.icon
             const status = getStepStatus(step.id)
@@ -113,7 +113,7 @@ export function AnimatedProcessingPipeline({ currentStep, progress }: AnimatedPr
               <div key={step.id} className="flex items-center gap-8" data-step={step.id}>
                 <div
                   className={`
-                    relative p-6 rounded-2xl transition-all duration-500 transform
+                    relative p-4 rounded-2xl transition-all duration-500 transform
                     ${
                       isCompleted
                         ? `bg-gradient-to-r ${step.color} shadow-2xl scale-110`
@@ -132,7 +132,7 @@ export function AnimatedProcessingPipeline({ currentStep, progress }: AnimatedPr
 
                   {/* Icon */}
                   <Icon
-                    className={`step-icon h-8 w-8 text-white relative z-10 ${
+                    className={`step-icon h-6 w-6 text-white relative z-10 ${
                       isActive && (step.id === "transcribing" || step.id === "translating") ? "animate-spin" : ""
                     }`}
                   />
@@ -140,7 +140,7 @@ export function AnimatedProcessingPipeline({ currentStep, progress }: AnimatedPr
 
                 <div className="flex-1">
                   <p
-                    className={`font-semibold text-2xl ${
+                    className={`font-semibold text-lg ${
                       isCompleted ? "text-green-400" : isActive ? "text-blue-400" : "text-slate-400"
                     }`}
                   >

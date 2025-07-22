@@ -13,41 +13,52 @@ export function MorphingLogo() {
   ]
 
   useEffect(() => {
+    // ensure the component is mounted and an element exists
     if (!svgRef.current || !pathRef.current) return
-    ;(async () => {
-      const { default: anime } = await import("animejs")
+    
+    const initAnimations = async () => {
+      try {
+        // Use the safe-anime utility instead of direct import
+        const anime = (await import("@/lib/safe-anime")).default
 
-      // Continuous morphing animation
-      const morphTimeline = anime.timeline({ loop: true })
+        // Continuous morphing animation
+        const morphTimeline = anime.timeline({ loop: true })
+        
+        // Add each path to the timeline sequentially
+        let timeline = morphTimeline
+        for (const path of morphPaths) {
+          timeline = timeline.add({
+            targets: pathRef.current,
+            d: path,
+            duration: 1500,
+            easing: "easeInOutQuart",
+          })
+        }
 
-      morphPaths.forEach((path) => {
-        morphTimeline.add({
-          targets: pathRef.current,
-          d: path,
-          duration: 1500,
-          easing: "easeInOutQuart",
+        // Rotation animation - don't await this, let it run in parallel
+        anime({
+          targets: svgRef.current,
+          rotate: "1turn",
+          duration: 8000,
+          loop: true,
+          easing: "linear",
         })
-      })
 
-      // Rotation animation
-      anime({
-        targets: svgRef.current,
-        rotate: "1turn",
-        duration: 8000,
-        loop: true,
-        easing: "linear",
-      })
-
-      // Floating animation
-      anime({
-        targets: svgRef.current,
-        translateY: [-10, 10],
-        duration: 2000,
-        direction: "alternate",
-        loop: true,
-        easing: "easeInOutSine",
-      })
-    })()
+        // Floating animation - don't await this, let it run in parallel
+        anime({
+          targets: svgRef.current,
+          translateY: [-10, 10],
+          duration: 2000,
+          direction: "alternate",
+          loop: true,
+          easing: "easeInOutSine",
+        })
+      } catch (error) {
+        console.error("Error loading animation:", error)
+      }
+    }
+    
+    initAnimations()
   }, [])
 
   return (

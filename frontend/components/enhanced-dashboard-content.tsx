@@ -226,14 +226,14 @@ export function EnhancedDashboardContent() {
       {/* Enhanced Header */}
       <div className="space-y-4 opacity-100">
         <div className="flex items-center gap-4">
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 shadow-2xl">
-            <FileAudio className="h-10 w-10 text-white" />
+          <div className="p-3 rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 shadow-2xl">
+            <FileAudio className="h-8 w-8 text-white" />
           </div>
           <div>
-            <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent">
               AI Dashboard
             </h1>
-            <p className="text-slate-400 text-xl">Transform Tamil audio with advanced neural networks</p>
+            <p className="text-slate-400 text-base">Transform Tamil audio with advanced neural networks</p>
           </div>
         </div>
       </div>
@@ -242,19 +242,19 @@ export function EnhancedDashboardContent() {
         {/* Enhanced Upload Section */}
         <Card className="dashboard-card bg-slate-800/50 backdrop-blur-xl border-slate-700/50 shadow-2xl opacity-100">
           <CardHeader className="pb-4">
-            <CardTitle className="text-white flex items-center gap-3 text-2xl">
+            <CardTitle className="text-white flex items-center gap-3 text-xl">
               <div className="p-3 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 shadow-lg">
                 <Upload className="h-6 w-6 text-white" />
               </div>
               Neural Audio Processor
             </CardTitle>
-            <CardDescription className="text-slate-400 text-lg">
+            <CardDescription className="text-slate-400 text-base">
               Upload Tamil audio for AI-powered transcription and translation
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-3">
-              <Label htmlFor="processName" className="text-slate-300 font-medium text-lg">
+              <Label htmlFor="processName" className="text-slate-300 font-medium text-base">
                 Process Name
               </Label>
               <Input
@@ -262,26 +262,26 @@ export function EnhancedDashboardContent() {
                 placeholder="Enter a descriptive name for this translation"
                 value={processName}
                 onChange={(e) => setProcessName(e.target.value)}
-                className="h-14 bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400 focus:border-blue-500 focus:ring-blue-500/20 transition-all duration-200 text-lg"
+                className="h-12 bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-400 focus:border-blue-500 focus:ring-blue-500/20 transition-all duration-200 text-base"
               />
             </div>
 
             <div className="space-y-3">
-              <Label className="text-slate-300 font-medium text-lg">Audio File</Label>
+              <Label className="text-slate-300 font-medium text-base">Audio File</Label>
               <div
                 ref={uploadZoneRef}
-                className="border-2 border-dashed border-slate-600 rounded-2xl p-12 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-500/5 transition-all duration-500 group relative overflow-hidden"
+                className="border-2 border-dashed border-slate-600 rounded-2xl p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-500/5 transition-all duration-500 group relative overflow-hidden"
                 onClick={() => fileInputRef.current?.click()}
               >
                 <div className="space-y-6">
-                  <div className="mx-auto w-20 h-20 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center group-hover:scale-110 transition-transform duration-500 shadow-2xl">
-                    <Upload className="h-10 w-10 text-white" />
+                  <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center group-hover:scale-110 transition-transform duration-500 shadow-2xl">
+                    <Upload className="h-8 w-8 text-white" />
                   </div>
                   <div>
-                    <p className="text-slate-300 font-medium text-xl mb-2">
+                    <p className="text-slate-300 font-medium text-lg mb-2">
                       {uploadedFile ? uploadedFile.name : "Drop your audio file here"}
                     </p>
-                    <p className="text-slate-500 text-lg">MP3, WAV, M4A up to 50MB</p>
+                    <p className="text-slate-500 text-sm">MP3, WAV, M4A up to 50MB</p>
                   </div>
                 </div>
                 <input ref={fileInputRef} type="file" accept="audio/*" onChange={handleFileUpload} className="hidden" />

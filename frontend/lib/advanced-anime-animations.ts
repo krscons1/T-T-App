@@ -5,10 +5,10 @@ import anime from "@/lib/safe-anime"
 
 export const advancedAnimeAnimations = {
   // Complex morphing animations
-  morphingLoader: (targets: string | Element | NodeList) => {
+  morphingLoader: async (targets: string | Element | NodeList) => {
     if (typeof window !== "undefined") {
-      return anime
-        .timeline({ loop: true })
+      const timeline = await anime.timeline({ loop: true })
+      return timeline
         .add({
           targets,
           scale: [1, 2, 1],
@@ -31,7 +31,7 @@ export const advancedAnimeAnimations = {
   },
 
   // Advanced particle explosion
-  particleExplosion: (container: Element, particleCount = 50) => {
+  particleExplosion: async (container: Element, particleCount = 50) => {
     if (typeof window !== "undefined") {
       // Create particles
       const particles = Array.from({ length: particleCount }, (_, i) => {
@@ -51,7 +51,7 @@ export const advancedAnimeAnimations = {
         return particle
       })
 
-      return anime({
+      return await anime({
         targets: particles,
         translateX: () => anime.random(-300, 300),
         translateY: () => anime.random(-300, 300),
@@ -68,28 +68,28 @@ export const advancedAnimeAnimations = {
   },
 
   // SVG path morphing
-  morphSVGPath: (targets: string | Element | NodeList, paths: string[]) => {
+  morphSVGPath: async (targets: string | Element | NodeList, paths: string[]) => {
     if (typeof window !== "undefined") {
-      const timeline = anime.timeline({ loop: true })
+      const timeline = await anime.timeline({ loop: true })
 
-      paths.forEach((path, index) => {
+      for (const path of paths) {
         timeline.add({
           targets,
           d: path,
           duration: 1500,
           easing: "easeInOutQuart",
         })
-      })
+      }
 
       return timeline
     }
   },
 
   // Advanced 3D card flip with multiple faces
-  advanced3DFlip: (targets: string | Element | NodeList) => {
+  advanced3DFlip: async (targets: string | Element | NodeList) => {
     if (typeof window !== "undefined") {
-      return anime
-        .timeline()
+      const timeline = await anime.timeline()
+      return timeline
         .add({
           targets,
           rotateY: [0, 90],
@@ -119,15 +119,16 @@ export const advancedAnimeAnimations = {
   },
 
   // Complex wave animation
-  waveAnimation: (targets: string | Element | NodeList) => {
+  waveAnimation: async (targets: string | Element | NodeList) => {
     if (typeof window !== "undefined") {
-      return anime({
+      const staggerValue = await anime.stagger(200, { grid: [14, 5], from: "center" })
+      return await anime({
         targets,
         translateY: [0, -20, 0],
         scale: [1, 1.1, 1],
         rotate: [0, 5, -5, 0],
         duration: 2000,
-        delay: anime.stagger(200, { grid: [14, 5], from: "center" }),
+        delay: staggerValue,
         loop: true,
         direction: "alternate",
         easing: "easeInOutSine",
@@ -136,12 +137,12 @@ export const advancedAnimeAnimations = {
   },
 
   // Advanced text scramble effect
-  textScramble: (target: Element, finalText: string) => {
+  textScramble: async (target: Element, finalText: string) => {
     if (typeof window !== "undefined") {
       const chars = "!<>-_\\/[]{}—=+*^?#________"
       let iteration = 0
 
-      return anime({
+      return await anime({
         targets: { value: 0 },
         value: 1,
         duration: 2000,
@@ -169,10 +170,10 @@ export const advancedAnimeAnimations = {
   },
 
   // Liquid morphing button
-  liquidButton: (target: Element) => {
+  liquidButton: async (target: Element) => {
     if (typeof window !== "undefined") {
-      return anime
-        .timeline()
+      const timeline = await anime.timeline()
+      return timeline
         .add({
           targets: target,
           scale: [1, 0.9],
@@ -190,10 +191,10 @@ export const advancedAnimeAnimations = {
   },
 
   // Advanced loading spinner with morphing shapes
-  morphingSpinner: (targets: string | Element | NodeList) => {
+  morphingSpinner: async (targets: string | Element | NodeList) => {
     if (typeof window !== "undefined") {
-      return anime
-        .timeline({ loop: true })
+      const timeline = await anime.timeline({ loop: true })
+      return timeline
         .add({
           targets,
           rotate: [0, 180],
@@ -224,25 +225,27 @@ export const advancedAnimeAnimations = {
   },
 
   // Complex stagger grid animation
-  staggerGrid: (targets: string | Element | NodeList, gridSize = [10, 10]) => {
+  staggerGrid: async (targets: string | Element | NodeList, gridSize = [10, 10]) => {
     if (typeof window !== "undefined") {
-      return anime({
+      const duration = anime.random(600, 1000)
+      const staggerValue = await anime.stagger(100, { grid: gridSize, from: "center" })
+      return await anime({
         targets,
         scale: [0, 1],
         opacity: [0, 1],
         translateZ: 0,
-        duration: anime.random(600, 1000),
-        delay: anime.stagger(100, { grid: gridSize, from: "center" }),
+        duration,
+        delay: staggerValue,
         easing: "easeInOutExpo",
       })
     }
   },
 
   // Advanced hover effect with multiple transformations
-  advancedHover: (target: Element) => {
+  advancedHover: async (target: Element) => {
     if (typeof window !== "undefined") {
-      return anime
-        .timeline()
+      const timeline = await anime.timeline()
+      return timeline
         .add({
           targets: target,
           translateY: -10,
@@ -266,9 +269,9 @@ export const advancedAnimeAnimations = {
   },
 
   // Physics-based spring animation
-  springAnimation: (targets: string | Element | NodeList, properties: any) => {
+  springAnimation: async (targets: string | Element | NodeList, properties: any) => {
     if (typeof window !== "undefined") {
-      return anime({
+      return await anime({
         targets,
         ...properties,
         duration: 1200,
@@ -278,10 +281,11 @@ export const advancedAnimeAnimations = {
   },
 
   // Advanced timeline with multiple elements
-  complexTimeline: (elements: { [key: string]: string | Element | NodeList }) => {
+  complexTimeline: async (elements: { [key: string]: string | Element | NodeList }) => {
     if (typeof window !== "undefined") {
-      return anime
-        .timeline()
+      const staggerValue = await anime.stagger(100)
+      const timeline = await anime.timeline()
+      return timeline
         .add({
           targets: elements.logo,
           translateY: [-100, 0],
@@ -307,7 +311,7 @@ export const advancedAnimeAnimations = {
             opacity: [0, 1],
             scale: [0.8, 1],
             duration: 600,
-            delay: anime.stagger(100),
+            delay: staggerValue,
             easing: "easeOutBack",
           },
           "-=400",

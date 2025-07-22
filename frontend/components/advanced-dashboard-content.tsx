@@ -26,7 +26,7 @@ export function AdvancedDashboardContent() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const anime = require("animejs").default
+      const anime = require("animejs/lib/anime.es.js").default
 
       // Complex entrance animation
       anime

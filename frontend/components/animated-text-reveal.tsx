@@ -13,26 +13,33 @@ export function AnimatedTextReveal({ text, className = "", delay = 0 }: Animated
   useEffect(() => {
     async function animateText() {
       if (typeof window !== "undefined" && textRef.current) {
-        const { default: anime } = await import("@/lib/safe-anime")
+        try {
+          const { default: anime } = await import("@/lib/safe-anime")
 
-        // Split text into spans for individual character animation
-        const textElement = textRef.current
-        textElement.innerHTML = text
-          .split("")
-          .map(
-            (char) => `<span style="opacity: 0; transform: translateY(20px);">${char === " " ? "&nbsp;" : char}</span>`,
-          )
-          .join("")
+          // Split text into spans for individual character animation
+          const textElement = textRef.current
+          textElement.innerHTML = text
+            .split("")
+            .map(
+              (char) => `<span style="opacity: 0; transform: translateY(20px);">${char === " " ? "&nbsp;" : char}</span>`,
+            )
+            .join("")
 
-        // Animate each character
-        anime({
-          targets: textElement.children,
-          opacity: [0, 1],
-          translateY: [20, 0],
-          duration: 600,
-          delay: anime.stagger(30, { start: delay }),
-          easing: "easeOutExpo",
-        })
+          // Get stagger value first
+          const staggerDelay = await anime.stagger(30, { start: delay })
+          
+          // Animate each character
+          anime({
+            targets: textElement.children,
+            opacity: [0, 1],
+            translateY: [20, 0],
+            duration: 600,
+            delay: staggerDelay,
+            easing: "easeOutExpo",
+          })
+        } catch (error) {
+          console.error("Error animating text:", error)
+        }
       }
     }
     animateText()

@@ -19,18 +19,22 @@ export function AnimatedCard({ icon: Icon, title, description, gradient, delay =
   useEffect(() => {
     if (typeof window !== "undefined") {
       const initAnime = async () => {
-        const { default: anime } = await import("@/lib/safe-anime")
+        try {
+          const { default: anime } = await import("@/lib/safe-anime")
 
-        // Initial entrance animation
-        anime({
-          targets: cardRef.current,
-          translateY: [100, 0],
-          opacity: [0, 1],
-          scale: [0.8, 1],
-          duration: 800,
-          delay,
-          easing: "easeOutBack",
-        })
+          // Initial entrance animation
+          anime({
+            targets: cardRef.current,
+            translateY: [100, 0],
+            opacity: [0, 1],
+            scale: [0.8, 1],
+            duration: 800,
+            delay,
+            easing: "easeOutBack",
+          })
+        } catch (error) {
+          console.error("Error initializing card animation:", error)
+        }
       }
       initAnime()
     }
@@ -39,14 +43,18 @@ export function AnimatedCard({ icon: Icon, title, description, gradient, delay =
   const handleMouseEnter = () => {
     if (typeof window !== "undefined") {
       const initAnime = async () => {
-        const { default: anime } = await import("@/lib/safe-anime")
-        anime({
-          targets: cardRef.current,
-          translateY: -10,
-          scale: 1.05,
-          duration: 300,
-          easing: "easeOutQuad",
-        })
+        try {
+          const { default: anime } = await import("@/lib/safe-anime")
+          anime({
+            targets: cardRef.current,
+            translateY: -10,
+            scale: 1.05,
+            duration: 300,
+            easing: "easeOutQuad",
+          })
+        } catch (error) {
+          console.error("Error in mouse enter animation:", error)
+        }
       }
       initAnime()
     }
@@ -55,14 +63,18 @@ export function AnimatedCard({ icon: Icon, title, description, gradient, delay =
   const handleMouseLeave = () => {
     if (typeof window !== "undefined") {
       const initAnime = async () => {
-        const { default: anime } = await import("@/lib/safe-anime")
-        anime({
-          targets: cardRef.current,
-          translateY: 0,
-          scale: 1,
-          duration: 300,
-          easing: "easeOutQuad",
-        })
+        try {
+          const { default: anime } = await import("@/lib/safe-anime")
+          anime({
+            targets: cardRef.current,
+            translateY: 0,
+            scale: 1,
+            duration: 300,
+            easing: "easeOutQuad",
+          })
+        } catch (error) {
+          console.error("Error in mouse leave animation:", error)
+        }
       }
       initAnime()
     }
@@ -113,9 +125,9 @@ export function AnimatedFeatureCards() {
   ]
 
   return (
-    <div className="grid gap-6 max-w-lg mx-auto lg:mx-0">
+    <div className="grid gap-6 max-w-lg mx-auto lg:mx-0 mt-12">
       {features.map((feature, index) => (
-        <AnimatedCard key={feature.title} {...feature} delay={index * 200} />
+        <AnimatedCard key={feature.title} {...feature} delay={index * 200 + 800} />
       ))}
     </div>
   )

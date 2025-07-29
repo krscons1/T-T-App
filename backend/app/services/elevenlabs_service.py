@@ -54,15 +54,15 @@ class ElevenLabsService:
                     'language_code': 'ta',  # Tamil
                     'tag_audio_events': 'true',
                     'diarize': 'true',
-                    'num_speakers': '2',
+                    'num_speakers': '30',
                     'timestamps_granularity': 'word'
                 },
                 {
                     'model_id': 'scribe_v1',
-                    'language_code': 'auto',  # Auto-detect
+                    'language_code': None,  # Auto-detect
                     'tag_audio_events': 'true',
                     'diarize': 'true',
-                    'num_speakers': '2',
+                    'num_speakers': '30',
                     'timestamps_granularity': 'word'
                 },
                 {
@@ -70,7 +70,7 @@ class ElevenLabsService:
                     'language_code': 'en',  # English (fallback)
                     'tag_audio_events': 'true',
                     'diarize': 'true',
-                    'num_speakers': '2',
+                    'num_speakers': '30',
                     'timestamps_granularity': 'word'
                 }
             ]

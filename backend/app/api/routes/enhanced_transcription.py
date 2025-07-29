@@ -21,66 +21,56 @@ async def process_enhanced_transcription(
     - Dynamic Tamil phrase detection with improved matching
     - Whisper disabled for faster processing
     """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    temp_file_path = None
     try:
-        # Validate file
-        if not file.filename:
-            raise HTTPException(status_code=400, detail="No file provided")
-        
-        # Check file size (limit to 100MB)
-        file_size = 0
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1])
-        
-        try:
+        # Create a temporary file to store the upload
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
             content = await file.read()
             file_size = len(content)
-            if file_size > 100 * 1024 * 1024:  # 100MB
-                raise HTTPException(status_code=400, detail="File too large. Maximum size is 100MB")
+            if file_size > 1024 * 1024 * 1024:  # 1024MB
+                raise HTTPException(status_code=400, detail="File too large. Maximum size is 1024MB")
             
             temp_file.write(content)
-            temp_file.close()
-            
-            print(f"📁 Processing file: {file.filename} ({file_size} bytes)")
-            print(f"📁 File format: {os.path.splitext(file.filename)[1]}")
-            
-            # Process through enhanced transcription pipeline
-            result = await enhanced_transcription_service.process_enhanced_transcription(temp_file.name)
-            
-            if not result["success"]:
-                raise HTTPException(status_code=500, detail=f"Processing failed: {result.get('error', 'Unknown error')}")
+            temp_file_path = temp_file.name
 
-            # Store in Supabase DB
-            await enhanced_transcription_service.store_transcription_in_db({
-                "filename": file.filename,
-                "final_transcript": result["final_transcript"],
-                "elevenlabs_transcript": result["elevenlabs_transcript"],
-                "transliterated_elevenlabs": result["transliterated_elevenlabs"],
-                "sarvam_transcript": result["sarvam_transcript"],
-                "sarvam_diarized_transcript": result["sarvam_diarized_transcript"],
-                "processing_info": result["processing_info"]
-            })
-            
-            # Export to SRT if requested
-            if export_srt and result["final_transcript"]:
-                srt_path = os.path.join(tempfile.gettempdir(), f"{os.path.splitext(file.filename)[0]}_enhanced.srt")
-                enhanced_transcription_service.export_to_srt(result["final_transcript"], srt_path)
-                result["srt_file_path"] = srt_path
-            
-            # Clean up temporary file
-            os.unlink(temp_file.name)
-            
-            return result
-            
-        except Exception as e:
-            # Clean up on error
-            if os.path.exists(temp_file.name):
-                os.unlink(temp_file.name)
-            raise e
-            
-    except HTTPException:
-        raise
+        print(f"📁 Processing file: {file.filename} ({file_size} bytes)")
+        print(f"📁 File format: {os.path.splitext(file.filename)[1]}")
+        
+        # Process through enhanced transcription pipeline
+        result = await enhanced_transcription_service.process_enhanced_transcription(temp_file_path)
+        
+        if not result["success"]:
+            raise HTTPException(status_code=500, detail=f"Processing failed: {result.get('error', 'Unknown error')}")
+
+        # Store in Supabase DB
+        await enhanced_transcription_service.store_transcription_in_db({
+            "filename": file.filename,
+            "final_transcript": result["final_transcript"],
+            "elevenlabs_transcript": result["elevenlabs_transcript"],
+            "transliterated_elevenlabs": result["transliterated_elevenlabs"],
+            "sarvam_transcript": result["sarvam_transcript"],
+            "sarvam_diarized_transcript": result["sarvam_diarized_transcript"],
+            "processing_info": result["processing_info"]
+        })
+        
+        # Export to SRT if requested
+        if export_srt and result["final_transcript"]:
+            srt_path = os.path.join(tempfile.gettempdir(), f"{os.path.splitext(file.filename)[0]}_enhanced.srt")
+            enhanced_transcription_service.export_to_srt(result["final_transcript"], srt_path)
+            result["srt_file_path"] = srt_path
+        
+        return result
+
     except Exception as e:
         print(f"❌ Enhanced transcription API error: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    finally:
+        # Ensure the temporary file is always removed
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
 
 
 @router.get("/status")

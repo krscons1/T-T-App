@@ -368,31 +368,31 @@ class EnhancedTranscriptionService:
         """Get Whisper timestamps and segments"""
         try:
             print("🦜 Getting Whisper timestamps...")
-            
+
             # Check if binary and model exist
             if not os.path.exists(self.whisper_binary_path):
                 raise Exception(f"Whisper binary not found: {self.whisper_binary_path}")
             if not os.path.exists(self.whisper_model_path):
                 raise Exception(f"Whisper model not found: {self.whisper_model_path}")
-            
+
             # Check if audio file exists and has content
             if not os.path.exists(audio_file_path):
                 raise Exception(f"Audio file not found: {audio_file_path}")
-            
+
             file_size = os.path.getsize(audio_file_path)
             print(f"📁 Audio file size: {file_size} bytes")
-            
+
             if file_size == 0:
                 raise Exception("Audio file is empty")
-            
+
             print(f"✅ Using Whisper binary: {self.whisper_binary_path}")
             print(f"✅ Using Whisper model: {self.whisper_model_path}")
-            
+
             # Create temporary output files
             temp_dir = tempfile.gettempdir()
             base_name = os.path.splitext(os.path.basename(audio_file_path))[0]
             json_output = os.path.join(temp_dir, f"{base_name}_whisper.json")
-            
+
             # Run whisper-cli with JSON output
             cmd = [
                 self.whisper_binary_path,
@@ -401,34 +401,34 @@ class EnhancedTranscriptionService:
                 "-oj",  # Output JSON
                 "-of", os.path.splitext(json_output)[0]  # Output file base name
             ]
-            
+
             print(f"🦜 Running command: {' '.join(cmd)}")
-            
-            result = subprocess.run(cmd, capture_output=True, text=True)
+
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
             print(f"🦜 Whisper return code: {result.returncode}")
-            print(f"🦜 Whisper stdout: {result.stdout}")
-            print(f"🦜 Whisper stderr: {result.stderr}")
-            
+            # print(f"🦜 Whisper stdout: {result.stdout}") # Too verbose
+            # print(f"🦜 Whisper stderr: {result.stderr}") # Too verbose
+
             if result.returncode != 0:
                 raise Exception(f"Whisper processing failed: {result.stderr}")
-            
+
             # Read the JSON output
             if os.path.exists(json_output):
                 with open(json_output, 'r', encoding='utf-8') as f:
                     whisper_data = json.load(f)
-                
+
                 # Clean up temporary file
                 os.remove(json_output)
-                
+
                 # Parse the correct structure - Whisper returns 'transcription' array
                 if 'transcription' in whisper_data:
                     raw_segments = whisper_data['transcription']
                     segments = []
-                    
+                    end_time = 0.0
+
                     for segment in raw_segments:
                         # Extract timing information
                         timestamps = segment.get('timestamps', {})
-                        offsets = segment.get('offsets', {})
                         
                         # Convert timestamp format "00:00:10,000" to seconds
                         start_time_str = timestamps.get('from', '00:00:00,000')
@@ -448,13 +448,13 @@ class EnhancedTranscriptionService:
                         })
                     
                     print(f"✅ Whisper timestamps obtained: {len(segments)} segments")
-                    return {"segments": segments, "duration": end_time if segments else 0}
+                    return {"segments": segments, "duration": end_time}
                 else:
-                    # Fallback to old format
+                    # Fallback for older whisper format
                     segments = whisper_data.get('segments', [])
-                    print(f"✅ Whisper timestamps obtained: {len(segments)} segments")
+                    print(f"✅ Whisper timestamps obtained (fallback format): {len(segments)} segments")
                     
-                    if len(segments) == 0:
+                    if not segments:
                         print("⚠️  Warning: Whisper returned 0 segments. This might indicate:")
                         print("   - Audio file is too short or silent")
                         print("   - Audio format issues")
@@ -463,14 +463,14 @@ class EnhancedTranscriptionService:
                         
                         # Try with a different model if available
                         alternative_model = os.path.join(os.path.dirname(self.whisper_model_path), "ggml-medium.bin")
-                        if os.path.exists(alternative_model):
+                        if os.path.exists(alternative_model) and self.whisper_model_path != alternative_model:
                             print(f"🔄 Trying alternative model: {alternative_model}")
                             return await self._try_alternative_model(audio_file_path, alternative_model)
                     
                     return whisper_data
             else:
-                raise Exception("Whisper JSON output file not found")
-                
+                raise Exception(f"Whisper JSON output file not found: {json_output}")
+
         except Exception as e:
             print(f"❌ Whisper processing failed: {e}")
             return {"segments": [], "duration": 0}

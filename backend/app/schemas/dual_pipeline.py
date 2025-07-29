@@ -35,10 +35,10 @@ class TranscriptSegment(BaseModel):
 
 class EnhancedTranscriptionResponse(BaseModel):
     success: bool
-    final_transcript: List[Dict[str, Any]]
-    elevenlabs_transcript: List[Dict[str, Any]]
-    transliterated_elevenlabs: List[TranscriptSegment]
-    sarvam_transcript: str
+    final_transcript: Optional[List[Dict[str, Any]]] = None
+    elevenlabs_transcript: Optional[List[Dict[str, Any]]] = None
+    transliterated_elevenlabs: Optional[List[TranscriptSegment]] = None
+    sarvam_transcript: Optional[str] = None
     sarvam_diarized_transcript: Optional[Any] = None
     processing_info: Dict[str, Any]
-    error: Optional[str] = None 
+    error: Optional[str] = None

@@ -16,7 +16,7 @@ class SarvamBatchService:
     def initialize_job(self) -> Optional[dict]:
         url = "https://api.sarvam.ai/speech-to-text/job/init"
         try:
-            response = requests.post(url, headers=self.headers)
+            response = requests.post(url, headers=self.headers, timeout=60)
             print(f"🔍 Job initialization response: {response.status_code}")
             if response.status_code == 202:
                 result = response.json()
@@ -33,7 +33,7 @@ class SarvamBatchService:
         url = "https://api.sarvam.ai/speech-to-text/job"
         headers = {**self.headers, "Content-Type": "application/json"}
         data = {"job_id": job_id, "job_parameters": {"language_code": language_code}}
-        response = requests.post(url, headers=headers, data=json.dumps(data))
+        response = requests.post(url, headers=headers, data=json.dumps(data), timeout=60)
         if response.status_code == 200:
             return response.json()
         print(f"Failed to start job: {response.status_code} {response.text}")  # Debug print
@@ -41,7 +41,7 @@ class SarvamBatchService:
 
     def check_job_status(self, job_id: str) -> Optional[dict]:
         url = f"https://api.sarvam.ai/speech-to-text/job/{job_id}/status"
-        response = requests.get(url, headers=self.headers)
+        response = requests.get(url, headers=self.headers, timeout=60)
         if response.status_code == 200:
             return response.json()
         return None
@@ -158,7 +158,7 @@ class SarvamBatchService:
         headers = {**self.headers, "Content-Type": "application/json"}
         data = {"job_id": job_id, "job_parameters": job_parameters}
         try:
-            response = requests.post(url, headers=headers, data=json.dumps(data))
+            response = requests.post(url, headers=headers, data=json.dumps(data), timeout=60)
             print(f"🔍 Start job response: {response.status_code}")
             if response.status_code == 200:
                 result = response.json()

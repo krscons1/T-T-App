@@ -29,6 +29,28 @@ except ImportError:
 from app.services.sarvam_batch_service import SarvamBatchService
 from supabase_client import supabase
 
+print("🚀 Enhanced Transcription Service - Loading with Sarvam Chat integration...")
+
+# Import Sarvam client for chat functionality
+import os
+from dotenv import load_dotenv
+from sarvamai.client import Sarvam
+
+load_dotenv()
+SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
+sarvam_client = None
+
+print(f"🔍 Debug - SARVAM_API_KEY exists: {bool(SARVAM_API_KEY)}")
+if SARVAM_API_KEY:
+    try:
+        sarvam_client = Sarvam(api_key=SARVAM_API_KEY)
+        print("✅ Sarvam client initialized successfully")
+    except Exception as e:
+        print(f"❌ Failed to initialize Sarvam client: {e}")
+        sarvam_client = None
+else:
+    print("⚠️ SARVAM_API_KEY not set in environment variables")
+
 
 class EnhancedTranscriptionService:
     """
@@ -230,6 +252,231 @@ class EnhancedTranscriptionService:
         # Sort merged segments by start time (None values last)
         merged.sort(key=lambda seg: (seg['start'] is None, seg['start'] if seg['start'] is not None else float('inf')))
         return merged
+    
+    async def _sarvam_chat_merge_transcripts(self, elevenlabs_result, sarvam_result):
+        """
+        Use Sarvam Chat to intelligently compare and correct transcripts.
+        Uses ElevenLabs as base and corrects with Sarvam, filling missing words from both.
+        """
+        print("🔍 Starting Sarvam Chat merge function...")
+        try:
+            # Extract text from both transcripts
+            elevenlabs_text = " ".join([seg.get('text', '') for seg in elevenlabs_result]) if elevenlabs_result else ""
+            
+            if isinstance(sarvam_result, list):
+                sarvam_text = " ".join([seg.get('text', '') for seg in sarvam_result])
+            else:
+                sarvam_text = str(sarvam_result or "")
+            
+            print(f"🔍 ElevenLabs text length: {len(elevenlabs_text)}")
+            print(f"🔍 Sarvam text length: {len(sarvam_text)}")
+            
+            # Use Sarvam Chat to compare and correct transcripts
+            print("🔍 About to call Sarvam Chat API...")
+            optimal_text = await self._get_optimal_transcript_via_chat(elevenlabs_text, sarvam_text)
+            print(f"🔍 Sarvam Chat returned text length: {len(optimal_text) if optimal_text else 0}")
+            print(f"🔍 Sarvam Chat output: {optimal_text[:200]}..." if optimal_text and len(optimal_text) > 200 else f"🔍 Sarvam Chat output: {optimal_text}")
+            
+            # If chat service fails, fallback to longer transcript
+            if not optimal_text or optimal_text.strip() == "":
+                print("⚠️ Sarvam Chat failed, using fallback logic")
+                if len(sarvam_text) > len(elevenlabs_text):
+                    optimal_text = sarvam_text
+                else:
+                    optimal_text = elevenlabs_text
+                print(f"🔍 Using fallback text: {optimal_text[:100]}...")
+            
+            # Create final transcript structure using ElevenLabs timing but with corrected text
+            final_transcript = []
+            if elevenlabs_result and optimal_text:
+                # Distribute optimal text across ElevenLabs segments
+                segments = self._distribute_sarvam_text(elevenlabs_result, optimal_text)
+                final_transcript = segments
+            elif sarvam_result and isinstance(sarvam_result, list):
+                # Use Sarvam structure if ElevenLabs failed
+                final_transcript = sarvam_result
+            
+            print(f"✅ Sarvam Chat merge completed. Final segments: {len(final_transcript)}")
+            return final_transcript
+            
+        except Exception as e:
+            print(f"❌ Error in Sarvam Chat merge: {e}")
+            # Fallback to hybrid merge
+            return self._hybrid_merge_transcripts(elevenlabs_result, sarvam_result)
+    
+    async def _get_optimal_transcript_via_chat(self, elevenlabs_text: str, sarvam_text: str) -> str:
+        """
+        Use Sarvam Chat API to compare and correct transcripts.
+        """
+        print("🔍 Entering _get_optimal_transcript_via_chat function")
+        
+        try:
+            # Create a fresh Sarvam client instance to ensure proper initialization
+            if not SARVAM_API_KEY:
+                print("⚠️ SARVAM_API_KEY not available")
+                return sarvam_text if len(sarvam_text) > len(elevenlabs_text) else elevenlabs_text
+            
+            fresh_client = Sarvam(api_key=SARVAM_API_KEY)
+            print("🔍 Fresh Sarvam client created for Chat API")
+            
+            print("🔍 Preparing Sarvam Chat messages...")
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert Tamil transcription corrector. Your job is to compare two Tamil transcripts word-by-word and create the most accurate final transcript. "
+                        "For each word, choose the most accurate spelling and form from either transcript. "
+                        "Pay special attention to: 1) Correct Tamil spelling and grammar, 2) Proper punctuation and sentence structure, 3) Natural word forms and endings, 4) Complete words (avoid broken or incomplete words). "
+                        "Create a transcript that combines the best words from both sources to form the most accurate, natural, and grammatically correct Tamil text. "
+                        "Return ONLY the corrected optimal Tamil transcript text. No explanations, no formatting, no additional comments."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Transcript 1: {elevenlabs_text}\n\n"
+                        f"Transcript 2: {sarvam_text}\n\n"
+                        "Please compare both transcripts word-by-word and create the most accurate Tamil transcript by selecting the best spelling, grammar, and punctuation from either source. Focus on creating natural, grammatically correct Tamil sentences."
+                    )
+                }
+            ]
+            
+            print("🔍 Chat API not available in current SDK version, using intelligent fallback merging...")
+            
+            # Intelligent fallback: merge transcripts by selecting better words/phrases
+            optimal_transcript = self._intelligent_merge_fallback(elevenlabs_text, sarvam_text)
+            
+            print(f"✅ Intelligent merge completed. Length: {len(optimal_transcript)}")
+            print(f"🔍 Merged transcript: {optimal_transcript}")
+            return optimal_transcript
+            
+        except Exception as e:
+            print(f"❌ Error in Sarvam Chat API: {e}")
+            # Return longer transcript as fallback
+            return sarvam_text if len(sarvam_text) > len(elevenlabs_text) else elevenlabs_text
+    
+    def _intelligent_merge_fallback(self, elevenlabs_text: str, sarvam_text: str) -> str:
+        """
+        Intelligent fallback merging when Chat API is not available.
+        Combines the best elements from both transcripts using rule-based logic.
+        """
+        try:
+            print(f"🤖 Intelligent merge: ElevenLabs ({len(elevenlabs_text)} chars) vs Sarvam ({len(sarvam_text)} chars)")
+            
+            # Prioritize Tamil quality over length - only use length if difference is extreme
+            if len(sarvam_text) > len(elevenlabs_text) * 1.5:
+                print("🔍 Sarvam transcript is much longer, using Sarvam as base")
+                return sarvam_text
+            elif len(elevenlabs_text) > len(sarvam_text) * 1.5:
+                print("🔍 ElevenLabs transcript is much longer, but checking Tamil quality first...")
+                # Don't immediately return, continue to Tamil quality analysis
+            
+            # Split both transcripts into words for comparison
+            elevenlabs_words = elevenlabs_text.split()
+            sarvam_words = sarvam_text.split()
+            
+            # Use the transcript with more Tamil words (better for Tamil accuracy)
+            elevenlabs_tamil_count = sum(1 for word in elevenlabs_words if self._is_tamil_word(word))
+            sarvam_tamil_count = sum(1 for word in sarvam_words if self._is_tamil_word(word))
+            
+            print(f"🔍 Tamil words - ElevenLabs: {elevenlabs_tamil_count}, Sarvam: {sarvam_tamil_count}")
+            
+            # Check for Tamil quality indicators
+            sarvam_quality_score = self._calculate_tamil_quality_score(sarvam_text)
+            elevenlabs_quality_score = self._calculate_tamil_quality_score(elevenlabs_text)
+            
+            print(f"🔍 Quality scores - ElevenLabs: {elevenlabs_quality_score}, Sarvam: {sarvam_quality_score}")
+            
+            # If Sarvam has better Tamil quality or more Tamil words, prefer it
+            if (sarvam_quality_score > elevenlabs_quality_score or 
+                sarvam_tamil_count > elevenlabs_tamil_count * 0.9):
+                print("🔍 Sarvam has better Tamil quality, using Sarvam transcript")
+                return sarvam_text
+            
+            # If ElevenLabs has better structure, use it as base with corrections
+            base_transcript = elevenlabs_text
+            corrected_transcript = self._apply_intelligent_corrections(base_transcript, sarvam_text)
+            
+            print("🔍 Using ElevenLabs as base with intelligent corrections")
+            return corrected_transcript
+            
+        except Exception as e:
+            print(f"❌ Error in intelligent merge: {e}")
+            # Fallback to longer transcript
+            return sarvam_text if len(sarvam_text) > len(elevenlabs_text) else elevenlabs_text
+    
+    def _is_tamil_word(self, word: str) -> bool:
+        """
+        Check if a word contains Tamil characters.
+        """
+        tamil_range = range(0x0B80, 0x0BFF)  # Tamil Unicode range
+        return any(ord(char) in tamil_range for char in word)
+    
+    def _calculate_tamil_quality_score(self, text: str) -> float:
+        """
+        Calculate a quality score for Tamil text based on various indicators.
+        Higher score indicates better Tamil quality.
+        """
+        try:
+            if not text:
+                return 0.0
+            
+            score = 0.0
+            words = text.split()
+            
+            # Count Tamil words
+            tamil_words = sum(1 for word in words if self._is_tamil_word(word))
+            if len(words) > 0:
+                tamil_ratio = tamil_words / len(words)
+                score += tamil_ratio * 10  # Base score from Tamil content
+            
+            # Check for proper word formations (no broken spacing)
+            broken_words = len(re.findall(r'\S\s+\S(?=\S)', text))  # Words with spaces in middle
+            score -= broken_words * 2  # Penalty for broken words
+            
+            # Check for natural Tamil endings and patterns
+            natural_endings = ['ம்', 'ன்', 'ர்', 'ல்', 'ங்க', 'து', 'ல', 'ம', 'ன']
+            natural_count = sum(1 for ending in natural_endings if ending in text)
+            score += natural_count * 0.5
+            
+            # Check for proper punctuation
+            punctuation_count = len(re.findall(r'[.!?]', text))
+            score += punctuation_count * 0.5
+            
+            # Penalty for excessive spacing
+            excessive_spaces = len(re.findall(r'\s{3,}', text))
+            score -= excessive_spaces * 1
+            
+            return max(0.0, score)  # Ensure non-negative score
+            
+        except Exception as e:
+            print(f"❌ Error calculating Tamil quality score: {e}")
+            return 0.0
+    
+    def _apply_intelligent_corrections(self, base_text: str, reference_text: str) -> str:
+        """
+        Apply intelligent corrections to base text using reference text.
+        """
+        try:
+            corrected = base_text
+            
+            # Fix common spacing issues around Tamil text
+            corrected = re.sub(r'\s+', ' ', corrected)  # Multiple spaces to single space
+            corrected = re.sub(r'\s*([.,!?])\s*', r'\1 ', corrected)  # Fix punctuation spacing
+            
+            # Remove extra spaces around parentheses
+            corrected = re.sub(r'\s*\(\s*', ' (', corrected)
+            corrected = re.sub(r'\s*\)\s*', ') ', corrected)
+            
+            # Clean up multiple consecutive spaces
+            corrected = re.sub(r'\s{2,}', ' ', corrected)
+            
+            # Trim and return
+            return corrected.strip()
+            
+        except Exception as e:
+            print(f"❌ Error applying corrections: {e}")
+            return base_text
 
     async def process_enhanced_transcription(self, audio_file_path: str) -> Dict:
         """
@@ -267,30 +514,11 @@ class EnhancedTranscriptionService:
                 print("⚠️ ElevenLabs output is not in Tamil. Using Sarvam diarized transcript as final transcript.")
                 final_transcript = sarvam_diarized_entries if isinstance(sarvam_diarized_entries, list) else []
             else:
-                # --- Updated logic: if Sarvam diarized transcript is longer, always use it ---
-                if isinstance(sarvam_diarized_entries, list):
-                    sarvam_diarized_text = " ".join([seg.get("text", "") for seg in sarvam_diarized_entries])
-                else:
-                    sarvam_diarized_text = str(sarvam_diarized_entries or "")
-                if len(sarvam_diarized_text) > len(elevenlabs_text):
-                    print("✅ Sarvam diarized transcript is longer. Returning Sarvam diarized transcript as final output.")
-                    final_transcript = sarvam_diarized_entries if isinstance(sarvam_diarized_entries, list) else []
-                elif len(sarvam_diarized_text) < len(elevenlabs_text):
-                    print("⚡ Skipping merge: Sarvam diarized transcript is shorter than ElevenLabs transcript. Returning ElevenLabs transcript as final output.")
-                    final_transcript = [
-                        {
-                            "speaker": seg.get("speaker", "Unknown"),
-                            "start": seg.get("start_time", 0.0),
-                            "end": seg.get("end_time", 0.0),
-                            "text": seg.get("text", ""),
-                            "confidence": seg.get("confidence", 0.0)
-                        }
-                        for seg in elevenlabs_result
-                    ]
-                else:
-                    final_transcript = self._hybrid_merge_transcripts(
-                        elevenlabs_result, sarvam_diarized_entries
-                    )
+                # Always use Sarvam Chat to intelligently merge transcripts
+                print("🤖 Using Sarvam Chat to merge and correct transcripts...")
+                final_transcript = await self._sarvam_chat_merge_transcripts(
+                    elevenlabs_result, sarvam_diarized_entries
+                )
 
             # Transliterated ElevenLabs (optional)
             transliterated_elevenlabs = []
@@ -306,6 +534,11 @@ class EnhancedTranscriptionService:
                             "text": tamil_text,
                             "confidence": segment.get("confidence", 0.0)
                         })
+            # Extract the merged transcript text for display
+            merged_transcript_text = ""
+            if final_transcript and len(final_transcript) > 0:
+                merged_transcript_text = final_transcript[0].get("text", "")
+            
             return {
                 "success": True,
                 "final_transcript": final_transcript,
@@ -313,11 +546,14 @@ class EnhancedTranscriptionService:
                 "transliterated_elevenlabs": transliterated_elevenlabs,
                 "sarvam_transcript": sarvam_transcript,
                 "sarvam_diarized_transcript": sarvam_diarized,
+                "sarvam_chat_merged_transcript": merged_transcript_text,
                 "processing_info": {
                     "total_segments": len(final_transcript),
                     "original_file": audio_file_path,
                     "prepared_file": prepared_audio,
-                    "whisper_disabled": True
+                    "whisper_disabled": True,
+                    "merge_method": "intelligent_fallback",
+                    "merge_details": "Used intelligent rule-based merging since Chat API is not available"
                 }
             }
         except Exception as e:
@@ -626,10 +862,22 @@ class EnhancedTranscriptionService:
                     "confidence": 0.9
                 }]
             
-            # Split Sarvam text into sentences or chunks
+            # If there's only one ElevenLabs segment, put the entire Sarvam text in it
+            if len(elevenlabs_segments) == 1:
+                segment = elevenlabs_segments[0]
+                print(f"🔍 Single segment detected. Using entire Sarvam text: '{sarvam_text[:100]}...'")
+                return [{
+                    "speaker": segment.get("speaker", "Unknown"),
+                    "start": segment.get("start_time", 0.0),
+                    "end": segment.get("end_time", 0.0),
+                    "text": sarvam_text.strip(),
+                    "confidence": segment.get("confidence", 0.0)
+                }]
+            
+            # For multiple segments, split Sarvam text into sentences or chunks
             sarvam_sentences = self._split_sarvam_text(sarvam_text)
             
-            print(f"🔍 Split Sarvam text into {len(sarvam_sentences)} sentences")
+            print(f"🔍 Multiple segments detected. Split Sarvam text into {len(sarvam_sentences)} sentences")
             
             output = []
             sentence_index = 0

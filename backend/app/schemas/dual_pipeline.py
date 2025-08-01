@@ -38,7 +38,7 @@ class EnhancedTranscriptionResponse(BaseModel):
     final_transcript: List[Dict[str, Any]]
     elevenlabs_transcript: List[Dict[str, Any]]
     transliterated_elevenlabs: List[TranscriptSegment]
-    sarvam_transcript: str
+    sarvam_transcript: Optional[str] = None
     sarvam_diarized_transcript: Optional[Any] = None
     processing_info: Dict[str, Any]
     error: Optional[str] = None 

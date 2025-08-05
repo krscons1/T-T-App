@@ -1,17 +1,17 @@
 import os
 from dotenv import load_dotenv
-from sarvamai.client import Sarvam
+from sarvamai import SarvamAI
 import logging
 from typing import Optional
 
 load_dotenv()
 
 SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
-client: Optional[Sarvam] = None
+client: Optional[SarvamAI] = None
 
 if SARVAM_API_KEY:
     try:
-        client = Sarvam(api_subscription_key=SARVAM_API_KEY)
+        client = SarvamAI(api_subscription_key=SARVAM_API_KEY)
     except Exception as e:
         logging.warning(f"Failed to initialize Sarvam client: {e}")
         client = None

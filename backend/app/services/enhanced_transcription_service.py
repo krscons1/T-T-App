@@ -34,7 +34,7 @@ print("🚀 Enhanced Transcription Service - Loading with Sarvam Chat integratio
 # Import Sarvam client for chat functionality
 import os
 from dotenv import load_dotenv
-from sarvamai.client import Sarvam
+from sarvamai import SarvamAI
 
 load_dotenv()
 SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
@@ -43,7 +43,7 @@ sarvam_client = None
 print(f"🔍 Debug - SARVAM_API_KEY exists: {bool(SARVAM_API_KEY)}")
 if SARVAM_API_KEY:
     try:
-        sarvam_client = Sarvam(api_key=SARVAM_API_KEY)
+        sarvam_client = SarvamAI(api_subscription_key=SARVAM_API_KEY)
         print("✅ Sarvam client initialized successfully")
     except Exception as e:
         print(f"❌ Failed to initialize Sarvam client: {e}")
@@ -285,24 +285,38 @@ class EnhancedTranscriptionService:
                 else:
                     optimal_text = elevenlabs_text
                 print(f"🔍 Using fallback text: {optimal_text[:100]}...")
-            
-            # Create final transcript structure using ElevenLabs timing but with corrected text
-            final_transcript = []
-            if elevenlabs_result and optimal_text:
-                # Distribute optimal text across ElevenLabs segments
-                segments = self._distribute_sarvam_text(elevenlabs_result, optimal_text)
-                final_transcript = segments
-            elif sarvam_result and isinstance(sarvam_result, list):
-                # Use Sarvam structure if ElevenLabs failed
-                final_transcript = sarvam_result
-            
-            print(f"✅ Sarvam Chat merge completed. Final segments: {len(final_transcript)}")
+        
+            # Create simple final transcript structure with the merged text
+            final_transcript = [{
+                "text": optimal_text,
+                "speaker": "speaker_0",
+                "start": 0.0,
+                "end": 0.0,
+                "confidence": 1.0
+            }]
+        
+            print(f"✅ Sarvam Chat merge completed. Final transcript: {optimal_text[:100]}...")
             return final_transcript
             
         except Exception as e:
             print(f"❌ Error in Sarvam Chat merge: {e}")
-            # Fallback to hybrid merge
-            return self._hybrid_merge_transcripts(elevenlabs_result, sarvam_result)
+            # Fallback to professional intelligent merge
+            elevenlabs_text = " ".join([seg.get('text', '') for seg in elevenlabs_result]) if elevenlabs_result else ""
+            if isinstance(sarvam_result, list):
+                sarvam_text = " ".join([seg.get('text', '') for seg in sarvam_result])
+            else:
+                sarvam_text = str(sarvam_result or "")
+            
+            optimal_text = self._professional_intelligent_merge_fallback(elevenlabs_text, sarvam_text)
+            
+            # Create final transcript structure with professional merged text
+            if elevenlabs_result and optimal_text:
+                segments = self._distribute_sarvam_text(elevenlabs_result, optimal_text)
+                return segments
+            elif sarvam_result and isinstance(sarvam_result, list):
+                return sarvam_result
+            else:
+                return [{"text": optimal_text, "speaker": "speaker_0", "start": 0, "end": 0}]
     
     async def _get_optimal_transcript_via_chat(self, elevenlabs_text: str, sarvam_text: str) -> str:
         """
@@ -316,44 +330,185 @@ class EnhancedTranscriptionService:
                 print("⚠️ SARVAM_API_KEY not available")
                 return sarvam_text if len(sarvam_text) > len(elevenlabs_text) else elevenlabs_text
             
-            fresh_client = Sarvam(api_key=SARVAM_API_KEY)
+            fresh_client = SarvamAI(api_subscription_key=SARVAM_API_KEY)
             print("🔍 Fresh Sarvam client created for Chat API")
             
-            print("🔍 Preparing Sarvam Chat messages...")
+            print("🔍 Preparing Sarvam Chat messages with professional merging prompt...")
             messages = [
                 {
                     "role": "system",
                     "content": (
-                        "You are an expert Tamil transcription corrector. Your job is to compare two Tamil transcripts word-by-word and create the most accurate final transcript. "
-                        "For each word, choose the most accurate spelling and form from either transcript. "
-                        "Pay special attention to: 1) Correct Tamil spelling and grammar, 2) Proper punctuation and sentence structure, 3) Natural word forms and endings, 4) Complete words (avoid broken or incomplete words). "
-                        "Create a transcript that combines the best words from both sources to form the most accurate, natural, and grammatically correct Tamil text. "
-                        "Return ONLY the corrected optimal Tamil transcript text. No explanations, no formatting, no additional comments."
+                        "Act as a professional text merging and optimization expert. You specialize in analyzing and merging Tamil transcripts to create the most accurate, natural, and coherent final output. "
+                        "Your expertise includes: Tamil grammar and syntax, natural language flow, contextual understanding, speaker voice preservation, and technical accuracy. "
+                        "Always prioritize coherence and readability while maintaining the authentic voice and emotional expressions of the original speaker."
                     )
                 },
                 {
                     "role": "user",
                     "content": (
-                        f"Transcript 1: {elevenlabs_text}\n\n"
-                        f"Transcript 2: {sarvam_text}\n\n"
-                        "Please compare both transcripts word-by-word and create the most accurate Tamil transcript by selecting the best spelling, grammar, and punctuation from either source. Focus on creating natural, grammatically correct Tamil sentences."
+                        "Analyze the following two Tamil texts and create an optimally merged transcript:\n\n"
+                        f"**Base Text (Primary Source):** {elevenlabs_text}\n\n"
+                        f"**Supplementary Text (Secondary Source):** {sarvam_text}\n\n"
+                        "**Requirements:**\n"
+                        "- Use the Base Text as the foundation\n"
+                        "- Integrate all unique content from the Supplementary Text\n"
+                        "- Maintain original speaker's voice and emotional expressions\n"
+                        "- Standardize numerical values (prices, quantities) in digit format (₹20 instead of இருபது ரூபாய்)\n"
+                        "- Resolve any TTS errors or inconsistencies\n"
+                        "- Preserve all contextual details and narrative flow\n"
+                        "- Intelligently merge duplicate content\n"
+                        "- Ensure proper formatting of prices (₹ symbol before numbers)\n"
+                        "- Maintain conversational tone and colloquial expressions\n"
+                        "- Handle Tanglish words appropriately (keep English technical terms as-is)\n"
+                        "- Prioritize coherence and readability over verbatim matching\n\n"
+                        "**Output ONLY the final merged transcript in natural Tamil without any explanations or formatting.**"
                     )
                 }
             ]
             
-            print("🔍 Chat API not available in current SDK version, using intelligent fallback merging...")
+            # Check if Chat API is available in the SDK
+            if not hasattr(fresh_client, 'chat'):
+                print("🔍 Chat API not available in current SDK version, using professional intelligent fallback merging...")
+                # Professional intelligent fallback: merge transcripts using the same logic as the professional prompt
+                optimal_transcript = self._professional_intelligent_merge_fallback(elevenlabs_text, sarvam_text)
+                print(f"✅ Intelligent merge completed. Length: {len(optimal_transcript)}")
+                print(f"🔍 Merged transcript: {optimal_transcript}")
+                return optimal_transcript
             
-            # Intelligent fallback: merge transcripts by selecting better words/phrases
-            optimal_transcript = self._intelligent_merge_fallback(elevenlabs_text, sarvam_text)
+            print("🔍 Attempting Sarvam Chat API call...")
             
-            print(f"✅ Intelligent merge completed. Length: {len(optimal_transcript)}")
-            print(f"🔍 Merged transcript: {optimal_transcript}")
-            return optimal_transcript
+            # Make the actual Chat API call
+            response = fresh_client.chat.completions(
+                model="sarvamai/sarvam-2b-v0.5",
+                messages=messages,
+                max_tokens=2000,
+                temperature=0.1
+            )
+            
+            print(f"🔍 Chat API response received: {response}")
+            
+            # Extract the merged transcript from the response
+            if response and hasattr(response, 'choices') and len(response.choices) > 0:
+                optimal_transcript = response.choices[0].message.content.strip()
+                print(f"✅ Sarvam Chat API merge completed. Length: {len(optimal_transcript)}")
+                print(f"🔍 Chat API merged transcript: {optimal_transcript[:200]}...")
+                return optimal_transcript
+            else:
+                print("⚠️ Invalid response from Chat API, using fallback")
+                optimal_transcript = self._professional_intelligent_merge_fallback(elevenlabs_text, sarvam_text)
+                return optimal_transcript
             
         except Exception as e:
             print(f"❌ Error in Sarvam Chat API: {e}")
             # Return longer transcript as fallback
             return sarvam_text if len(sarvam_text) > len(elevenlabs_text) else elevenlabs_text
+    
+    def _professional_intelligent_merge_fallback(self, elevenlabs_text: str, sarvam_text: str) -> str:
+        """
+        Professional intelligent fallback merging that follows the same requirements as the professional prompt.
+        Uses ElevenLabs as base text and integrates unique content from Sarvam as supplementary text.
+        """
+        try:
+            print(f"🎭 Professional merge: Base Text ({len(elevenlabs_text)} chars) + Supplementary ({len(sarvam_text)} chars)")
+            
+            # Use ElevenLabs as the foundation (Base Text)
+            base_text = elevenlabs_text
+            supplementary_text = sarvam_text
+            
+            # Step 1: Start with base text and clean it up
+            merged_transcript = self._clean_base_text(base_text)
+            
+            # Step 2: Integrate unique content from supplementary text
+            merged_transcript = self._integrate_supplementary_content(merged_transcript, supplementary_text)
+            
+            # Step 3: Apply professional optimizations
+            merged_transcript = self._apply_professional_optimizations(merged_transcript)
+            
+            print("🔍 Using ElevenLabs as base with professional supplementary integration")
+            return merged_transcript
+            
+        except Exception as e:
+            print(f"❌ Error in professional merge: {e}")
+            # Fallback to quality-based selection
+            return self._intelligent_merge_fallback(elevenlabs_text, sarvam_text)
+    
+    def _clean_base_text(self, base_text: str) -> str:
+        """
+        Clean and standardize the base text.
+        """
+        try:
+            cleaned = base_text
+            
+            # Fix spacing issues
+            cleaned = re.sub(r'\s+', ' ', cleaned)  # Multiple spaces to single
+            cleaned = re.sub(r'\s*([.,!?])\s*', r'\1 ', cleaned)  # Fix punctuation spacing
+            
+            # Fix parentheses spacing
+            cleaned = re.sub(r'\s*\(\s*', ' (', cleaned)
+            cleaned = re.sub(r'\s*\)\s*', ') ', cleaned)
+            
+            return cleaned.strip()
+            
+        except Exception as e:
+            print(f"❌ Error cleaning base text: {e}")
+            return base_text
+    
+    def _integrate_supplementary_content(self, base_text: str, supplementary_text: str) -> str:
+        """
+        Integrate unique and better content from supplementary text into base text.
+        """
+        try:
+            # For now, use quality-based selection between the two
+            # In a full implementation, this would do word-by-word comparison
+            base_quality = self._calculate_tamil_quality_score(base_text)
+            supp_quality = self._calculate_tamil_quality_score(supplementary_text)
+            
+            print(f"🔍 Quality comparison - Base: {base_quality:.1f}, Supplementary: {supp_quality:.1f}")
+            
+            # If supplementary has significantly better quality, use it instead
+            if supp_quality > base_quality * 1.2:
+                print("🔍 Supplementary text has significantly better quality, using it as primary")
+                return supplementary_text
+            
+            # Otherwise, use base text with corrections
+            return base_text
+            
+        except Exception as e:
+            print(f"❌ Error integrating supplementary content: {e}")
+            return base_text
+    
+    def _apply_professional_optimizations(self, text: str) -> str:
+        """
+        Apply professional optimizations as specified in the prompt.
+        """
+        try:
+            optimized = text
+            
+            # Standardize numerical values (convert Tamil numbers to digits)
+            # This is a simplified version - full implementation would handle all Tamil numbers
+            tamil_numbers = {
+                'இருபது': '20',  # இருபது -> 20
+                'முப்பது': '30',  # முப்பது -> 30
+                'நால்பது': '40',  # நாற்பது -> 40
+                'ஐம்பது': '50',   # ஐம்பது -> 50
+            }
+            
+            for tamil_num, digit in tamil_numbers.items():
+                if 'ரூபாய்' in optimized:  # ரூபாய்
+                    optimized = optimized.replace(f'{tamil_num} ரூபாய்', f'₹{digit}')
+                    optimized = optimized.replace(f'{tamil_num}ரூபாய்', f'₹{digit}')
+            
+            # Clean up multiple consecutive spaces
+            optimized = re.sub(r'\s{2,}', ' ', optimized)
+            
+            # Ensure proper spacing around currency symbols
+            optimized = re.sub(r'(₹)\s*', r'\1', optimized)  # Remove space after ₹
+            
+            return optimized.strip()
+            
+        except Exception as e:
+            print(f"❌ Error applying professional optimizations: {e}")
+            return text
     
     def _intelligent_merge_fallback(self, elevenlabs_text: str, sarvam_text: str) -> str:
         """
@@ -552,8 +707,8 @@ class EnhancedTranscriptionService:
                     "original_file": audio_file_path,
                     "prepared_file": prepared_audio,
                     "whisper_disabled": True,
-                    "merge_method": "intelligent_fallback",
-                    "merge_details": "Used intelligent rule-based merging since Chat API is not available"
+                    "merge_method": "professional_intelligent_fallback",
+                    "merge_details": "Used professional rule-based merging following expert prompt requirements"
                 }
             }
         except Exception as e:

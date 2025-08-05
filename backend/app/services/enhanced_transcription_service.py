@@ -273,29 +273,63 @@ class EnhancedTranscriptionService:
             
             # Use Sarvam Chat to compare and correct transcripts
             print("🔍 About to call Sarvam Chat API...")
-            optimal_text = await self._get_optimal_transcript_via_chat(elevenlabs_text, sarvam_text)
-            print(f"🔍 Sarvam Chat returned text length: {len(optimal_text) if optimal_text else 0}")
-            print(f"🔍 Sarvam Chat output: {optimal_text[:200]}..." if optimal_text and len(optimal_text) > 200 else f"🔍 Sarvam Chat output: {optimal_text}")
+            diarized_segments = await self._get_optimal_transcript_via_chat(elevenlabs_result, sarvam_result)
             
-            # If chat service fails, fallback to longer transcript
-            if not optimal_text or optimal_text.strip() == "":
-                print("⚠️ Sarvam Chat failed, using fallback logic")
-                if len(sarvam_text) > len(elevenlabs_text):
-                    optimal_text = sarvam_text
-                else:
-                    optimal_text = elevenlabs_text
-                print(f"🔍 Using fallback text: {optimal_text[:100]}...")
+            # Check if Sarvam Chat returned valid diarized segments
+            if isinstance(diarized_segments, list) and len(diarized_segments) > 0:
+                print(f"✅ Sarvam Chat returned {len(diarized_segments)} diarized segments")
+                # Add confidence field if not present
+                for segment in diarized_segments:
+                    if "confidence" not in segment:
+                        segment["confidence"] = 1.0
+                return diarized_segments
+            else:
+                print("⚠️ Sarvam Chat failed to return valid diarized segments, using fallback")
+                # Use professional merge fallback
+                optimal_text = self._professional_intelligent_merge_fallback(elevenlabs_text, sarvam_text)
         
-            # Create simple final transcript structure with the merged text
-            final_transcript = [{
-                "text": optimal_text,
-                "speaker": "speaker_0",
-                "start": 0.0,
-                "end": 0.0,
-                "confidence": 1.0
-            }]
+            # Create diarized final transcript structure using Sarvam diarization with merged text
+            if isinstance(sarvam_result, list) and len(sarvam_result) > 1:
+                # Use Sarvam diarization structure but distribute the merged text across segments
+                print(f"🔍 Using Sarvam diarization structure with {len(sarvam_result)} segments")
+                
+                # Split the optimal text into sentences for distribution
+                sentences = self._split_text_into_sentences(optimal_text)
+                
+                final_transcript = []
+                sentence_idx = 0
+                
+                for i, segment in enumerate(sarvam_result):
+                    # Get text for this segment
+                    if sentence_idx < len(sentences):
+                        segment_text = sentences[sentence_idx]
+                        sentence_idx += 1
+                    else:
+                        # If we run out of sentences, use remaining text
+                        remaining_sentences = sentences[sentence_idx:]
+                        segment_text = " ".join(remaining_sentences) if remaining_sentences else ""
+                        sentence_idx = len(sentences)
+                    
+                    final_transcript.append({
+                        "text": segment_text,
+                        "speaker": segment.get("speaker", f"speaker_{i}"),
+                        "start": segment.get("start", 0.0),
+                        "end": segment.get("end", 0.0),
+                        "confidence": 1.0
+                    })
+                
+                print(f"✅ Sarvam Chat merge completed with diarization. Segments: {len(final_transcript)}")
+            else:
+                # Fallback to single segment if no diarization available
+                final_transcript = [{
+                    "text": optimal_text,
+                    "speaker": "speaker_0",
+                    "start": 0.0,
+                    "end": 0.0,
+                    "confidence": 1.0
+                }]
+                print(f"✅ Sarvam Chat merge completed. Single segment: {optimal_text[:100]}...")
         
-            print(f"✅ Sarvam Chat merge completed. Final transcript: {optimal_text[:100]}...")
             return final_transcript
             
         except Exception as e:
@@ -318,7 +352,7 @@ class EnhancedTranscriptionService:
             else:
                 return [{"text": optimal_text, "speaker": "speaker_0", "start": 0, "end": 0}]
     
-    async def _get_optimal_transcript_via_chat(self, elevenlabs_text: str, sarvam_text: str) -> str:
+    async def _get_optimal_transcript_via_chat(self, elevenlabs_result, sarvam_result) -> str:
         """
         Use Sarvam Chat API to compare and correct transcripts.
         """
@@ -328,40 +362,66 @@ class EnhancedTranscriptionService:
             # Create a fresh Sarvam client instance to ensure proper initialization
             if not SARVAM_API_KEY:
                 print("⚠️ SARVAM_API_KEY not available")
+                # Fallback to longer transcript
+                elevenlabs_text = " ".join([seg.get('text', '') for seg in elevenlabs_result]) if elevenlabs_result else ""
+                if isinstance(sarvam_result, list):
+                    sarvam_text = " ".join([seg.get('text', '') for seg in sarvam_result])
+                else:
+                    sarvam_text = str(sarvam_result or "")
                 return sarvam_text if len(sarvam_text) > len(elevenlabs_text) else elevenlabs_text
             
             fresh_client = SarvamAI(api_subscription_key=SARVAM_API_KEY)
             print("🔍 Fresh Sarvam client created for Chat API")
             
-            print("🔍 Preparing Sarvam Chat messages with professional merging prompt...")
+            # Format ElevenLabs transcript for the prompt
+            elevenlabs_formatted = ""
+            if elevenlabs_result:
+                for i, seg in enumerate(elevenlabs_result):
+                    elevenlabs_formatted += f"Segment {i+1}: Speaker: {seg.get('speaker', 'Unknown')}, Start: {seg.get('start_time', 0):.2f}s, End: {seg.get('end_time', 0):.2f}s\nText: {seg.get('text', '')}\n\n"
+            
+            # Format Sarvam diarized transcript for the prompt
+            sarvam_formatted = ""
+            if isinstance(sarvam_result, list):
+                for i, seg in enumerate(sarvam_result):
+                    sarvam_formatted += f"Segment {i+1}: Speaker: {seg.get('speaker', 'Unknown')}, Start: {seg.get('start', 0):.2f}s, End: {seg.get('end', 0):.2f}s\nText: {seg.get('text', '')}\n\n"
+            
+            print("🔍 Preparing Sarvam Chat messages with professional diarized merging prompt...")
             messages = [
                 {
                     "role": "system",
                     "content": (
-                        "Act as a professional text merging and optimization expert. You specialize in analyzing and merging Tamil transcripts to create the most accurate, natural, and coherent final output. "
-                        "Your expertise includes: Tamil grammar and syntax, natural language flow, contextual understanding, speaker voice preservation, and technical accuracy. "
-                        "Always prioritize coherence and readability while maintaining the authentic voice and emotional expressions of the original speaker."
+                        "Act as a professional text merging and diarization expert. You specialize in analyzing and merging Tamil transcripts with speaker diarization to create the most accurate, natural, and coherent final output. "
+                        "Your expertise includes: Tamil grammar and syntax, natural language flow, contextual understanding, speaker voice preservation, technical accuracy, and diarization formatting. "
+                        "Always prioritize coherence and readability while maintaining the authentic voice and emotional expressions of each speaker."
                     )
                 },
                 {
                     "role": "user",
                     "content": (
-                        "Analyze the following two Tamil texts and create an optimally merged transcript:\n\n"
-                        f"**Base Text (Primary Source):** {elevenlabs_text}\n\n"
-                        f"**Supplementary Text (Secondary Source):** {sarvam_text}\n\n"
-                        "**Requirements:**\n"
-                        "- Use the Base Text as the foundation\n"
-                        "- Integrate all unique content from the Supplementary Text\n"
-                        "- Maintain original speaker's voice and emotional expressions\n"
-                        "- Standardize numerical values (prices, quantities) in digit format (₹20 instead of இருபது ரூபாய்)\n"
-                        "- Resolve any TTS errors or inconsistencies\n"
-                        "- Preserve all contextual details and narrative flow\n"
-                        "- Intelligently merge duplicate content\n"
-                        "- Ensure proper formatting of prices (₹ symbol before numbers)\n"
-                        "- Maintain conversational tone and colloquial expressions\n"
-                        "- Handle Tanglish words appropriately (keep English technical terms as-is)\n"
-                        "- Prioritize coherence and readability over verbatim matching\n\n"
-                        "**Output ONLY the final merged transcript in natural Tamil without any explanations or formatting.**"
+                        "Analyze the following two diarized Tamil transcripts and create an optimally merged transcript with proper diarization. Pay special attention to WORD-LEVEL ACCURACY:\n\n"
+                        f"**ElevenLabs Transcript (Primary Source):**\n{elevenlabs_formatted}\n"
+                        f"**Sarvam Diarized Transcript (Secondary Source - Higher Tamil Accuracy):**\n{sarvam_formatted}\n"
+                        "**Critical Requirements:**\n"
+                        "- **WORD-LEVEL COMPARISON**: Compare each word between transcripts and select the most accurate Tamil word\n"
+                        "- **Prioritize Sarvam words for Tamil accuracy**: When words differ (e.g., 'அவர் ரண்டி' vs 'அவரு வண்டி'), choose the Sarvam version ('அவரு வண்டி') as it's more accurate\n"
+                        "- **Correct spelling and grammar**: Fix any TTS errors, wrong spellings, or grammatical mistakes\n"
+                        "- **Maintain accurate speaker identification and timing from Sarvam diarization**\n"
+                        "- **Preserve original speaker's voice and emotional expressions**\n"
+                        "- **Standardize numerical values**: Use digit format with ₹ symbol (₹20 instead of இருபது ரூபாய்)\n"
+                        "- **Resolve TTS errors**: Fix any transcription artifacts or inconsistencies\n"
+                        "- **Preserve contextual details**: Keep all important narrative flow and context\n"
+                        "- **Handle Tanglish appropriately**: Keep English technical terms as-is when contextually correct\n"
+                        "- **Ensure natural flow**: Prioritize coherence and readability\n\n"
+                        "**Word Selection Priority:**\n"
+                        "1. If Sarvam has a different word, prefer Sarvam's version (it's usually more accurate for Tamil)\n"
+                        "2. If ElevenLabs has additional context or words missing in Sarvam, include them\n"
+                        "3. Always choose the word that makes the most grammatical and contextual sense\n\n"
+                        "**Output Format:** Return a JSON array of segments in this exact format:\n"
+                        "[\n"
+                        "  {\"text\": \"merged text for segment 1\", \"speaker\": \"speaker_id\", \"start\": 0.0, \"end\": 5.0},\n"
+                        "  {\"text\": \"merged text for segment 2\", \"speaker\": \"speaker_id\", \"start\": 5.0, \"end\": 10.0}\n"
+                        "]\n\n"
+                        "**Output ONLY the JSON array with merged diarized segments. No explanations or additional text.**"
                     )
                 }
             ]
@@ -379,7 +439,6 @@ class EnhancedTranscriptionService:
             
             # Make the actual Chat API call
             response = fresh_client.chat.completions(
-                model="sarvamai/sarvam-2b-v0.5",
                 messages=messages,
                 max_tokens=2000,
                 temperature=0.1
@@ -387,16 +446,57 @@ class EnhancedTranscriptionService:
             
             print(f"🔍 Chat API response received: {response}")
             
-            # Extract the merged transcript from the response
+            # Extract the merged diarized transcript from the response
             if response and hasattr(response, 'choices') and len(response.choices) > 0:
-                optimal_transcript = response.choices[0].message.content.strip()
-                print(f"✅ Sarvam Chat API merge completed. Length: {len(optimal_transcript)}")
-                print(f"🔍 Chat API merged transcript: {optimal_transcript[:200]}...")
-                return optimal_transcript
+                response_content = response.choices[0].message.content.strip()
+                print(f"🔍 Chat API response: {response_content[:200]}...")
+                
+                try:
+                    # Parse JSON response
+                    import json
+                    diarized_segments = json.loads(response_content)
+                    
+                    # Validate the response format
+                    if isinstance(diarized_segments, list) and len(diarized_segments) > 0:
+                        print(f"✅ Sarvam Chat API merge completed with {len(diarized_segments)} diarized segments")
+                        return diarized_segments
+                    else:
+                        print("⚠️ Invalid JSON format from Chat API, using fallback")
+                        raise ValueError("Invalid JSON format")
+                        
+                except (json.JSONDecodeError, ValueError) as e:
+                    print(f"⚠️ Failed to parse JSON response: {e}")
+                    print(f"🔍 Raw response: {response_content}")
+                    # Fallback to professional merge
+                    elevenlabs_text = " ".join([seg.get('text', '') for seg in elevenlabs_result]) if elevenlabs_result else ""
+                    if isinstance(sarvam_result, list):
+                        sarvam_text = " ".join([seg.get('text', '') for seg in sarvam_result])
+                    else:
+                        sarvam_text = str(sarvam_result or "")
+                    optimal_text = self._professional_intelligent_merge_fallback(elevenlabs_text, sarvam_text)
+                    return [{
+                        "text": optimal_text,
+                        "speaker": "speaker_0",
+                        "start": 0.0,
+                        "end": 0.0,
+                        "confidence": 1.0
+                    }]
             else:
                 print("⚠️ Invalid response from Chat API, using fallback")
-                optimal_transcript = self._professional_intelligent_merge_fallback(elevenlabs_text, sarvam_text)
-                return optimal_transcript
+                # Fallback to professional merge
+                elevenlabs_text = " ".join([seg.get('text', '') for seg in elevenlabs_result]) if elevenlabs_result else ""
+                if isinstance(sarvam_result, list):
+                    sarvam_text = " ".join([seg.get('text', '') for seg in sarvam_result])
+                else:
+                    sarvam_text = str(sarvam_result or "")
+                optimal_text = self._professional_intelligent_merge_fallback(elevenlabs_text, sarvam_text)
+                return [{
+                    "text": optimal_text,
+                    "speaker": "speaker_0",
+                    "start": 0.0,
+                    "end": 0.0,
+                    "confidence": 1.0
+                }]
             
         except Exception as e:
             print(f"❌ Error in Sarvam Chat API: {e}")
@@ -632,6 +732,38 @@ class EnhancedTranscriptionService:
         except Exception as e:
             print(f"❌ Error applying corrections: {e}")
             return base_text
+    
+    def _split_text_into_sentences(self, text: str) -> List[str]:
+        """
+        Split text into sentences for diarization distribution.
+        """
+        try:
+            if not text:
+                return []
+            
+            # Split by sentence endings
+            sentences = re.split(r'[.!?]+\s*', text)
+            sentences = [s.strip() for s in sentences if s.strip()]
+            
+            # If no sentence endings found, split by length
+            if len(sentences) <= 1:
+                words = text.split()
+                if len(words) > 10:
+                    # Split into chunks of roughly equal length
+                    chunk_size = len(words) // 3
+                    sentences = []
+                    for i in range(0, len(words), chunk_size):
+                        chunk = ' '.join(words[i:i + chunk_size])
+                        if chunk:
+                            sentences.append(chunk)
+                else:
+                    sentences = [text]
+            
+            return sentences
+            
+        except Exception as e:
+            print(f"❌ Error splitting text into sentences: {e}")
+            return [text]
 
     async def process_enhanced_transcription(self, audio_file_path: str) -> Dict:
         """

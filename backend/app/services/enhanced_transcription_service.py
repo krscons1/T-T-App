@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 from difflib import SequenceMatcher
 import httpx
 from app.core.config import settings
-from app.utils.audio_utils import transcribe_with_whisper_cpp
+# Whisper processing removed as per request
 import unicodedata
 from diff_match_patch import diff_match_patch
 from rapidfuzz import fuzz
@@ -55,33 +55,12 @@ else:
 class EnhancedTranscriptionService:
     """
     Multi-pipeline transcription service that combines:
-    - Whisper.cpp for accurate timestamps
     - ElevenLabs for speaker diarization and English structure
     - Sarvam API for Tamil word accuracy
     """
     
     def __init__(self):
-        # Use absolute paths for Windows compatibility
-        # From backend/app/services/ -> backend/whisper.cpp/
-        current_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        self.whisper_model_path = os.path.join(current_dir, "whisper.cpp", "models", "ggml-base.bin")
-        self.whisper_binary_path = os.path.join(current_dir, "whisper.cpp", "build", "bin", "whisper-cli.exe")
-        
-        print(f"🔍 Debug - Current directory: {current_dir}")
-        print(f"🔍 Debug - Whisper binary path: {self.whisper_binary_path}")
-        print(f"🔍 Debug - Whisper model path: {self.whisper_model_path}")
-        
-        # Verify paths exist
-        if not os.path.exists(self.whisper_binary_path):
-            print(f"❌ Whisper binary not found at: {self.whisper_binary_path}")
-        else:
-            print(f"✅ Whisper binary found at: {self.whisper_binary_path}")
-            
-        if not os.path.exists(self.whisper_model_path):
-            print(f"❌ Whisper model not found at: {self.whisper_model_path}")
-        else:
-            print(f"✅ Whisper model found at: {self.whisper_model_path}")
-        
+        # Initialize Sarvam batch service
         self.sarvam_batch = SarvamBatchService(api_key=os.getenv("SARVAM_API_KEY", "YOUR_API_KEY"))
     
     def _convert_thanglish_to_tamil(self, text: str) -> str:
